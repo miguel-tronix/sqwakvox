@@ -1,0 +1,8 @@
+# environment variables
+.env
+.venv
+__pycache__
+
+# uv settings
+uv.lock
+.uv
