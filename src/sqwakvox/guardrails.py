@@ -4,9 +4,9 @@ import hashlib
 import json
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, ClassVar
 
 from pydantic import BaseModel
 
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 class VerificationResult(BaseModel):
     passed: bool
-    discrepancies: List[str]
+    discrepancies: list[str]
 
 
 class FinancialRuleEngine:
@@ -28,7 +28,7 @@ class FinancialRuleEngine:
 
     @staticmethod
     def cross_check_text_assertions(
-        response_text: str, data_store: Dict[str, float]
+        response_text: str, data_store: dict[str, float]
     ) -> VerificationResult:
         discrepancies: list[str] = []
         numbers_found = re.findall(r"\$?\b\d+(?:\.\d+)?%?\b", response_text)
@@ -55,7 +55,7 @@ class FinancialRuleEngine:
 
 
 class PIIRedactor:
-    REDACTION_PATTERNS: Dict[str, re.Pattern[str]] = {
+    REDACTION_PATTERNS: ClassVar[dict[str, re.Pattern[str]]] = {
         "SSN": re.compile(r"\b\d{3}-\d{2}-\d{4}\b"),
         "CREDIT_CARD": re.compile(r"\b(?:\d{4}[- ]?){3}\d{4}\b"),
         "BANK_ACCOUNT": re.compile(r"\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b"),
@@ -71,10 +71,51 @@ class PIIRedactor:
 
     @classmethod
     def contains_pii(cls, text: str) -> bool:
-        for pattern in cls.REDACTION_PATTERNS.values():
-            if pattern.search(text):
-                return True
-        return False
+        return any(pattern.search(text) for pattern in cls.REDACTION_PATTERNS.values())
+
+
+class AnyGuardrailValidator:
+    """Wrapper around Mozilla's any-guardrail framework for runtime validation.
+
+    Provides a highly resilient execution layer with safe fallbacks if dependencies (like numpy)
+    are missing or misconfigured in the local environment.
+    """
+
+    _initialized: ClassVar[bool] = False
+    _guardrail_instance: ClassVar[Any] = None
+
+    @classmethod
+    def _try_init(cls) -> None:
+        if cls._initialized:
+            return
+        cls._initialized = True
+        try:
+            from any_guardrail import AnyGuardrail, GuardrailName
+
+            cls._guardrail_instance = AnyGuardrail.create(GuardrailName.INJECGUARD)
+            logger.info("Mozilla any-guardrail successfully initialized with INJECGUARD.")
+        except Exception as e:
+            logger.warning(
+                "Mozilla any-guardrail could not be fully initialized due to dependencies: %s. "
+                "Sqwakvox will fall back to local rule-based sanitization and regex validation.",
+                e,
+            )
+
+
+    @classmethod
+    def validate_prompt(cls, prompt: str) -> bool:
+        """Validates the prompt using any-guardrail, or falls back to True with safety logging."""
+        cls._try_init()
+        if cls._guardrail_instance is not None:
+            try:
+                result = cls._guardrail_instance.validate(prompt)
+                if hasattr(result, "valid"):
+                    return bool(result.valid)
+                if hasattr(result, "passed"):
+                    return bool(result.passed)
+            except Exception as e:
+                logger.error(f"Error during any-guardrail execution: {e}")
+        return True
 
 
 class AuditLogger:
@@ -91,14 +132,14 @@ class AuditLogger:
         cls,
         document_id: str,
         operation: str,
-        guardrail_checks: Optional[dict] = None,
+        guardrail_checks: dict[str, Any] | None = None,
         action: str = "ALLOWED",
         risk_score: float = 0.0,
-        input_text: Optional[str] = None,
+        input_text: str | None = None,
     ) -> None:
         cls._ensure_log_dir()
         entry = {
-            "timestamp": datetime.now(timezone.utc).strftime(
+            "timestamp": datetime.now(UTC).strftime(
                 "%Y-%m-%dT%H:%M:%SZ"
             ),
             "document_id": document_id,
@@ -113,7 +154,7 @@ class AuditLogger:
             ).hexdigest()
 
         try:
-            with open(cls.LOG_PATH, "a") as f:
+            with cls.LOG_PATH.open("a") as f:
                 f.write(json.dumps(entry) + "\n")
         except OSError as e:
             logger.error(f"Failed to write audit log: {e}")

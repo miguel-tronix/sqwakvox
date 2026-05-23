@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-from typing import List, Optional
-
-from textual.app import ComposeResult
 from textual.widgets import Static
 
 from sqwakvox.models import StructuredDocument, TableData
@@ -20,7 +17,7 @@ class TerminalChartPlotter:
             return "\n".join(f"{label:<15} |" for label in labels)
 
         lines: list[str] = []
-        for label, val in zip(labels, values):
+        for label, val in zip(labels, values, strict=True):
             bar_len = int((val / max_val) * max_width)
             bar = "█" * bar_len + "░" * (max_width - bar_len)
             lines.append(f"{label:<15} {bar} {val:>8.2f}")
@@ -45,7 +42,7 @@ class TerminalChartPlotter:
 
 class UnicodeTableFormatter:
     @staticmethod
-    def _detect_alignment(rows: List[List[str]], col_idx: int) -> str:
+    def _detect_alignment(rows: list[list[str]], col_idx: int) -> str:
         numeric_count = 0
         for row in rows:
             cell = row[col_idx].strip()
@@ -101,7 +98,7 @@ class UnicodeTableFormatter:
 
         def _format_row(cells: list[str], alignments: list[str]) -> str:
             parts: list[str] = []
-            for cell, w, align in zip(cells, col_widths, alignments):
+            for cell, w, _align in zip(cells, col_widths, alignments, strict=True):
                 text = cell.center(w)
                 parts.append(text)
             return sep_v + sep_v.join(parts) + sep_v
@@ -122,7 +119,7 @@ class UnicodeTableFormatter:
         return "\n".join(lines)
 
 
-class DocumentRenderPane(Static):
+class DocumentRenderPane(Static):  # type: ignore[misc]
     def update_document(self, doc: StructuredDocument) -> None:
         content: list[str] = []
         content.append(f"[bold]{doc.file_name}[/bold]\n")
@@ -137,7 +134,6 @@ class DocumentRenderPane(Static):
 
             numeric_values = self._extract_numeric_column(table)
             if numeric_values:
-                labels = [row[0] for row in table.rows if row]
                 spark = TerminalChartPlotter.render_sparkline(numeric_values)
                 if spark:
                     content.append(f"\nTrend: {spark}")

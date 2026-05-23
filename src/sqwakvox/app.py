@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import ClassVar
 
 from docling.document_converter import DocumentConverter
 from textual.app import App, ComposeResult
@@ -20,7 +21,12 @@ from textual.widgets import (
     Select,
 )
 
-from sqwakvox.guardrails import AuditLogger, FinancialRuleEngine, PIIRedactor
+from sqwakvox.guardrails import (
+    AnyGuardrailValidator,
+    AuditLogger,
+    FinancialRuleEngine,
+    PIIRedactor,
+)
 from sqwakvox.models import ModelProvider, StructuredDocument, TableData
 from sqwakvox.renderer import DocumentRenderPane
 
@@ -98,10 +104,10 @@ Screen {
 """
 
 
-class SqwakvoxApp(App):
+class SqwakvoxApp(App):  # type: ignore[misc]
     CSS = CSS
 
-    BINDINGS = [
+    BINDINGS: ClassVar[list[Binding]] = [
         Binding("q", "quit", "Quit", priority=True),
         Binding("ctrl+l", "focus_doc_source", "Load Document", priority=True),
         Binding("ctrl+f", "focus_chat_input", "Focus Chat", priority=True),
@@ -200,7 +206,7 @@ class SqwakvoxApp(App):
             btn_send.disabled = not is_ready
             btn_parse.disabled = False
 
-    def watch_is_parsing(self, new_value: bool) -> None:
+    def watch_is_parsing(self, _new_value: bool) -> None:
         self._update_ui_state()
 
     def watch_active_error(self, error: str | None) -> None:
@@ -281,8 +287,8 @@ class SqwakvoxApp(App):
                         actual, expected
                     ):
                         chat_log.write(
-                            f"  [green]✓[/green] Column '{table.headers[col_idx]}' sums to {expected} "
-                            f"(actual: {sum(actual):.2f})"
+                            f"  [green]✓[/green] Column '{table.headers[col_idx]}' "
+                            f"sums to {expected} (actual: {sum(actual):.2f})"
                         )
                     else:
                         chat_log.write(
@@ -402,6 +408,30 @@ class SqwakvoxApp(App):
             risk_score=1.0,
         )
 
+    def _build_financial_data_store(self) -> dict[str, float]:
+        """Extracts label -> numeric value mappings from all parsed document tables.
+
+        This serves as the ground-truth database for math-guardrail validations.
+        """
+        data_store: dict[str, float] = {}
+        if not self.structured_doc:
+            return data_store
+        for table in self.structured_doc.tables:
+            for row in table.rows:
+                if len(row) >= 2:
+                    label = row[0].strip()
+                    for cell in row[1:]:
+                        cleaned = cell.replace("$", "").replace(",", "").replace("%", "").strip()
+                        try:
+                            val = float(cleaned)
+                            if "%" in cell:
+                                val /= 100.0
+                            if label and len(label) > 1:
+                                data_store[label] = val
+                        except ValueError:
+                            continue
+        return data_store
+
     def _handle_chat(self) -> None:
         chat_input = self.query_one("#chat-input", Input)
         user_query = chat_input.value.strip()
@@ -422,6 +452,12 @@ class SqwakvoxApp(App):
             )
             return
 
+        if len(api_key) < 10:
+            chat_log.write(
+                "[bold red]System: Invalid API Key. The provided key is too short.[/bold red]"
+            )
+            return
+
         chat_log.write("[italic dim]Agent is thinking (via LangChain)...[/italic dim]")
 
         self.run_worker(
@@ -435,6 +471,16 @@ class SqwakvoxApp(App):
     ) -> None:
         chat_log = self.query_one("#chat-log", RichLog)
 
+        # 1. Mozilla any-guardrail Input Prompt Verification
+        is_query_safe = AnyGuardrailValidator.validate_prompt(user_query)
+        if not is_query_safe:
+            self.call_from_thread(
+                self._on_agent_blocked,
+                "Mozilla any-guardrail prompt safety violation"
+            )
+            return
+
+        # 2. Local PII Redaction
         redacted_query = PIIRedactor.redact_text(user_query)
         if redacted_query != user_query:
             chat_log.write(
@@ -444,7 +490,10 @@ class SqwakvoxApp(App):
         AuditLogger.log(
             document_id=self.active_document_name or "unknown",
             operation="user_query",
-            guardrail_checks={"pii_redacted": redacted_query != user_query},
+            guardrail_checks={
+                "any_guardrail_safe": True,
+                "pii_redacted": redacted_query != user_query,
+            },
             action="ALLOWED",
             input_text=user_query,
         )
@@ -462,7 +511,22 @@ class SqwakvoxApp(App):
                 env_var=env_var,
             )
 
+            # 3. Output PII Redaction
             agent_redacted = PIIRedactor.redact_text(agent_response)
+
+            # 4. Math Guardrail Validation
+            data_store = self._build_financial_data_store()
+            verification = FinancialRuleEngine.cross_check_text_assertions(
+                agent_redacted, data_store
+            )
+
+            if not verification.passed:
+                chat_log.write(
+                    "[bold yellow]System: Numerical discrepancies detected between "
+                    "agent assertions and parsed tables![/bold yellow]"
+                )
+                for discrepancy in verification.discrepancies:
+                    chat_log.write(f"  [yellow]⚠[/yellow] {discrepancy}")
 
             self.call_from_thread(self._on_agent_success, agent_redacted, user_query)
 
@@ -480,8 +544,26 @@ class SqwakvoxApp(App):
             input_text=query,
         )
 
+    def _on_agent_blocked(self, reason: str) -> None:
+        chat_log = self.query_one("#chat-log", RichLog)
+        chat_log.write(
+            f"[bold red]✗ Input Blocked:[/bold red] Prompt blocked by guardrail system: {reason}"
+        )
+        AuditLogger.log(
+            document_id=self.active_document_name or "unknown",
+            operation="user_query",
+            action="BLOCKED",
+            risk_score=1.0,
+        )
+
     def _on_agent_failure(self, error_message: str) -> None:
         chat_log = self.query_one("#chat-log", RichLog)
         chat_log.write(
-            f"[bold red]Agent execution failed:[/bold red] {error_message}"
+            f"[bold red]✗ Agent execution failed:[/bold red] {error_message}"
+        )
+        AuditLogger.log(
+            document_id=self.active_document_name or "unknown",
+            operation="agent_response",
+            action="FAILURE",
+            risk_score=0.5,
         )

@@ -1,25 +1,25 @@
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import Any, ClassVar
 
 from pydantic import BaseModel
 
 
 class TableData(BaseModel):
-    headers: List[str]
-    rows: List[List[str]]
-    title: Optional[str] = None
+    headers: list[str]
+    rows: list[list[str]]
+    title: str | None = None
 
 
 class StructuredDocument(BaseModel):
     file_name: str
     raw_markdown: str
-    tables: List[TableData] = []
-    metadata: dict = {}
+    tables: list[TableData] = []
+    metadata: dict[str, Any] = {}
 
 
 class ModelProvider:
-    MAP = {
+    MAP: ClassVar[dict[str, dict[str, str]]] = {
         "openai:gpt-4o": {"env_var": "OPENAI_API_KEY", "friendly_name": "OpenAI GPT-4o"},
         "openai:gpt-4o-mini": {
             "env_var": "OPENAI_API_KEY", "friendly_name": "OpenAI GPT-4o-Mini",

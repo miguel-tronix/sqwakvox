@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import threading
 from collections.abc import Generator
 from contextlib import contextmanager
 
@@ -9,18 +10,25 @@ from any_agent import AnyAgent as AnyAgentLib
 
 
 class AnyAgentOrchestrator:
+    _lock = threading.Lock()
+
     @staticmethod
     @contextmanager
     def inject_credentials(env_var: str, api_key: str) -> Generator[None, None, None]:
-        original_val = os.environ.get(env_var)
-        os.environ[env_var] = api_key
-        try:
-            yield
-        finally:
-            if original_val is None:
-                os.environ.pop(env_var, None)
-            else:
-                os.environ[env_var] = original_val
+        """Temporarily inject api key into environment securely using a process-wide lock.
+
+        Ensures thread-safe environment variable injection during concurrent query executions.
+        """
+        with AnyAgentOrchestrator._lock:
+            original_val = os.environ.get(env_var)
+            os.environ[env_var] = api_key
+            try:
+                yield
+            finally:
+                if original_val is None:
+                    os.environ.pop(env_var, None)
+                else:
+                    os.environ[env_var] = original_val
 
     @classmethod
     def execute_query(
