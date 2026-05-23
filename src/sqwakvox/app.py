@@ -5,7 +5,7 @@ from pathlib import Path
 from docling.document_converter import DocumentConverter
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Container, Horizontal, Vertical
+from textual.containers import Horizontal, Vertical
 from textual.reactive import reactive
 from textual.widgets import (
     Button,
@@ -17,11 +17,12 @@ from textual.widgets import (
     ListView,
     LoadingIndicator,
     RichLog,
+    Select,
 )
 
 from sqwakvox.guardrails import AuditLogger, FinancialRuleEngine, PIIRedactor
-from sqwakvox.models import StructuredDocument, TableData
-from sqwakvox.renderer import DocumentRenderPane, TerminalChartPlotter
+from sqwakvox.models import ModelProvider, StructuredDocument, TableData
+from sqwakvox.renderer import DocumentRenderPane
 
 CSS = """
 Screen {
@@ -132,6 +133,24 @@ class SqwakvoxApp(App):
                 id="doc-source",
             )
             yield Button("Load & Parse", variant="primary", id="btn-parse")
+
+            yield Label("[bold]Model Configuration[/bold]", id="model-config-label")
+            yield Label("Select Model:")
+            yield Select(
+                options=[
+                    (info["friendly_name"], model_id)
+                    for model_id, info in ModelProvider.MAP.items()
+                ],
+                value="openai:gpt-4o-mini",
+                id="model-selector",
+            )
+            yield Label("Enter Provider API Key:")
+            yield Input(
+                placeholder="sk-...",
+                password=True,
+                id="api-key-input",
+            )
+
             yield Label("[bold]Ingest History[/bold]", id="history-label")
             yield ListView(id="ingest-history")
 
@@ -393,6 +412,29 @@ class SqwakvoxApp(App):
         chat_log.write(f"\n[bold blue]You:[/bold blue] {user_query}")
         chat_input.value = ""
 
+        selected_model = self.query_one("#model-selector", Select).value
+        api_key = self.query_one("#api-key-input", Input).value.strip()
+
+        if not api_key:
+            chat_log.write(
+                "[bold yellow]System: Warning! API Key is missing. "
+                "Please provide a valid key in the sidebar.[/bold yellow]"
+            )
+            return
+
+        chat_log.write("[italic dim]Agent is thinking (via LangChain)...[/italic dim]")
+
+        self.run_worker(
+            self._execute_agent_background(selected_model, api_key, user_query),
+            thread=True,
+            name="any_agent_worker",
+        )
+
+    async def _execute_agent_background(
+        self, model_id: str, api_key: str, user_query: str
+    ) -> None:
+        chat_log = self.query_one("#chat-log", RichLog)
+
         redacted_query = PIIRedactor.redact_text(user_query)
         if redacted_query != user_query:
             chat_log.write(
@@ -407,19 +449,39 @@ class SqwakvoxApp(App):
             input_text=user_query,
         )
 
-        doc_context_preview = (
-            self.doc_context[:2000] if self.doc_context else "No document loaded."
-        )
-        agent_response = f"Based on the document context, here is the answer to: '{user_query}'."
+        env_var = ModelProvider.get_env_var(model_id)
 
-        agent_redacted = PIIRedactor.redact_text(agent_response)
-        chat_log.write(f"[bold green]Agent:[/bold green] {agent_redacted}")
+        try:
+            from sqwakvox.agent import AnyAgentOrchestrator
+
+            agent_response = AnyAgentOrchestrator.execute_query(
+                model_id=model_id,
+                api_key=api_key,
+                context=self.doc_context,
+                prompt=redacted_query,
+                env_var=env_var,
+            )
+
+            agent_redacted = PIIRedactor.redact_text(agent_response)
+
+            self.call_from_thread(self._on_agent_success, agent_redacted, user_query)
+
+        except Exception as e:
+            self.call_from_thread(self._on_agent_failure, str(e))
+
+    def _on_agent_success(self, response: str, query: str) -> None:
+        chat_log = self.query_one("#chat-log", RichLog)
+        chat_log.write(f"[bold green]Agent:[/bold green] {response}")
 
         AuditLogger.log(
             document_id=self.active_document_name or "unknown",
             operation="agent_response",
-            guardrail_checks={
-                "pii_redacted": agent_redacted != agent_response,
-            },
             action="ALLOWED",
+            input_text=query,
+        )
+
+    def _on_agent_failure(self, error_message: str) -> None:
+        chat_log = self.query_one("#chat-log", RichLog)
+        chat_log.write(
+            f"[bold red]Agent execution failed:[/bold red] {error_message}"
         )
