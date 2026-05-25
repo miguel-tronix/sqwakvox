@@ -119,7 +119,7 @@ class UnicodeTableFormatter:
         return "\n".join(lines)
 
 
-class DocumentRenderPane(Static):  # type: ignore[misc]
+class DocumentRenderPane(Static):
     def update_document(self, doc: StructuredDocument) -> None:
         content: list[str] = []
         content.append(f"[bold]{doc.file_name}[/bold]\n")

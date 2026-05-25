@@ -51,9 +51,9 @@ class AnyAgentOrchestrator:
         )
 
         with cls.inject_credentials(env_var, api_key):
-            agent = AnyAgentLib.create(
+            agent = AnyAgentLib.create(  # type: ignore[call-arg]
                 framework=AgentFramework("langchain"),
                 config=config,
             )
-            result: str = agent.run(prompt)
+            result: str = agent.run(prompt)  # type: ignore[assignment]
             return result

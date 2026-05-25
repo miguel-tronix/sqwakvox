@@ -7,7 +7,7 @@ name = "sqwakvox"
 version = "0.1.0"
 description = "Local AI Financial Document Assistant with Textual TUI, Docling Ingestion, and Mozilla any-guardrail Validation"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 license = { text = "MIT" }
 authors = [
     { name = "Miguel de Sousa", email = "miguel.tronix@gmail.com" }
@@ -22,12 +22,9 @@ dependencies = [
     "textual>=0.50.0",
     "docling>=2.0.0",
     "any-guardrail>=0.1.0",
-    "any-agent[langchain]>=0.1.0",
-    "langchain-openai>=0.1.0",
-    "langchain-anthropic>=0.1.0",
-    "langchain-mistralai>=0.1.0",
     "pydantic>=2.6.0",
     "jinja2>=3.1.0",
+    "any-agent[langchain]>=1.18.0",
 ]
 
 [dependency-groups]
@@ -87,10 +84,6 @@ show_error_codes = true
 module = [
     "docling.*",
     "any_guardrail.*",
-    "any_agent.*",
-    "langchain_openai.*",
-    "langchain_anthropic.*",
-    "langchain_mistralai.*",
     "textual.*",
 ]
 ignore_missing_imports = true

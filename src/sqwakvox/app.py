@@ -8,8 +8,10 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.reactive import reactive
+from textual.screen import ModalScreen
 from textual.widgets import (
     Button,
+    DirectoryTree,
     Footer,
     Header,
     Input,
@@ -20,6 +22,7 @@ from textual.widgets import (
     RichLog,
     Select,
 )
+from textual.worker import get_current_worker
 
 from sqwakvox.guardrails import (
     AnyGuardrailValidator,
@@ -35,24 +38,39 @@ Screen {
     layout: grid;
     grid-size: 3;
     grid-columns: 1fr 2fr 2fr;
+    grid-rows: 1fr;
 }
 
 #sidebar {
     border: solid $primary;
     padding: 1;
     background: $surface;
+    overflow-y: auto;
 }
 
 #sidebar Label {
     margin-bottom: 1;
 }
 
-#doc-source {
+#doc-source-row {
+    height: auto;
     margin-bottom: 1;
 }
 
+#doc-source {
+    width: 1fr;
+    margin-bottom: 0;
+}
+
+#btn-browse {
+    min-width: 5;
+    width: 5;
+    margin-left: 1;
+}
+
 #ingest-history {
-    height: 1fr;
+    height: auto;
+    max-height: 8;
     margin-top: 1;
 }
 
@@ -83,7 +101,7 @@ Screen {
 }
 
 #status-bar {
-    column-span: 3;
+    dock: bottom;
     height: 1;
     background: $accent;
     color: white;
@@ -91,23 +109,88 @@ Screen {
 }
 
 #loading-spinner {
-    column-span: 3;
     height: 1;
     dock: bottom;
 }
 
 #error-banner {
-    column-span: 3;
+    dock: bottom;
     height: auto;
     visibility: hidden;
+}
+
+Select {
+    background: $panel;
+    color: $text;
+}
+
+SelectCurrent {
+    background: $panel;
+    color: $text;
+}
+
+SelectOverlay {
+    background: $panel;
+    color: $text;
+    border: solid $primary;
+}
+
+FileSelectModal {
+    align: center middle;
+}
+
+#modal-container {
+    width: 70%;
+    height: 80%;
+    border: thick $primary;
+    background: $surface;
+    padding: 1;
+}
+
+#file-tree {
+    height: 1fr;
+    border: solid $secondary;
+    margin: 1 0;
+}
+
+#modal-buttons {
+    height: auto;
+    align: right middle;
+}
+
+#modal-buttons Button {
+    margin-left: 1;
 }
 """
 
 
-class SqwakvoxApp(App):  # type: ignore[misc]
+class FileSelectModal(ModalScreen[Path]):
+    def compose(self) -> ComposeResult:
+        with Vertical(id="modal-container"):
+            yield Label("[bold]Select a Document File[/bold]")
+            yield DirectoryTree("./", id="file-tree")
+            with Horizontal(id="modal-buttons"):
+                yield Button("Cancel", variant="error", id="btn-cancel")
+                yield Button("Select", variant="success", id="btn-select")
+
+    def on_directory_tree_file_selected(self, event: DirectoryTree.FileSelected) -> None:
+        self.dismiss(event.path)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "btn-cancel":
+            self.dismiss(None)
+        elif event.button.id == "btn-select":
+            tree = self.query_one("#file-tree", DirectoryTree)
+            if tree.cursor_node and tree.cursor_node.data:
+                path = tree.cursor_node.data.path
+                if path.is_file():
+                    self.dismiss(path)
+
+
+class SqwakvoxApp(App[None]):
     CSS = CSS
 
-    BINDINGS: ClassVar[list[Binding]] = [
+    BINDINGS: ClassVar[list[Binding | tuple[str, str] | tuple[str, str, str]]] = [
         Binding("q", "quit", "Quit", priority=True),
         Binding("ctrl+l", "focus_doc_source", "Load Document", priority=True),
         Binding("ctrl+f", "focus_chat_input", "Focus Chat", priority=True),
@@ -134,10 +217,12 @@ class SqwakvoxApp(App):  # type: ignore[misc]
 
         with Vertical(id="sidebar"):
             yield Label("[bold]Load Document[/bold]")
-            yield Input(
-                placeholder="File path or URL...",
-                id="doc-source",
-            )
+            with Horizontal(id="doc-source-row"):
+                yield Input(
+                    placeholder="File path or URL...",
+                    id="doc-source",
+                )
+                yield Button("📁", id="btn-browse", variant="default")
             yield Button("Load & Parse", variant="primary", id="btn-parse")
 
             yield Label("[bold]Model Configuration[/bold]", id="model-config-label")
@@ -297,10 +382,16 @@ class SqwakvoxApp(App):  # type: ignore[misc]
                         )
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "btn-parse":
+        if event.button.id == "btn-browse":
+            self.push_screen(FileSelectModal(), callback=self._on_file_selected)
+        elif event.button.id == "btn-parse":
             self._handle_parse()
         elif event.button.id == "btn-send":
             self._handle_chat()
+
+    def _on_file_selected(self, path: Path | None) -> None:
+        if path:
+            self.query_one("#doc-source", Input).value = str(path.absolute())
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         if event.input.id == "chat-input" and not event.input.disabled:
@@ -319,7 +410,7 @@ class SqwakvoxApp(App):  # type: ignore[misc]
         )
 
     async def _convert_document_in_background(self, source: str) -> None:
-        worker = self.get_current_worker()
+        worker = get_current_worker()
         try:
             result = self.converter.convert(source)
             if worker.is_cancelled:
@@ -331,21 +422,37 @@ class SqwakvoxApp(App):  # type: ignore[misc]
             tables: list[TableData] = []
             if hasattr(result.document, "tables") and result.document.tables:
                 for tbl in result.document.tables:
-                    headers = (
-                        [cell.text for cell in tbl.header_row]
-                        if hasattr(tbl, "header_row") and tbl.header_row
-                        else []
-                    )
-                    rows = [
-                        [cell.text for cell in row]
-                        for row in tbl.rows
-                        if hasattr(tbl, "rows")
-                    ]
+                    headers = []
+                    rows = []
+                    if hasattr(tbl, "export_to_dataframe"):
+                        try:
+                            df = tbl.export_to_dataframe()
+                            headers = [str(col) for col in df.columns]
+                            rows = [[str(val) for val in r] for r in df.values.tolist()]
+                        except Exception:
+                            pass
+
+                    if not headers and not rows:
+                        headers = (
+                            [cell.text for cell in tbl.header_row]
+                            if hasattr(tbl, "header_row") and tbl.header_row
+                            else []
+                        )
+                        if hasattr(tbl, "rows") and tbl.rows:
+                            rows = [
+                                [cell.text for cell in row]
+                                for row in tbl.rows
+                            ]
+
+                    caption = getattr(tbl, "caption_text", None) or getattr(tbl, "caption", None)
+                    if not caption and hasattr(tbl, "captions") and tbl.captions:
+                        caption = " ".join(getattr(c, "text", "") for c in tbl.captions)
+
                     tables.append(
                         TableData(
                             headers=headers,
                             rows=rows,
-                            title=getattr(tbl, "caption", None),
+                            title=caption,
                         )
                     )
 
@@ -443,6 +550,12 @@ class SqwakvoxApp(App):  # type: ignore[misc]
         chat_input.value = ""
 
         selected_model = self.query_one("#model-selector", Select).value
+        if selected_model is None or not isinstance(selected_model, str):
+            chat_log.write(
+                "[bold yellow]System: Please select a valid model configuration.[/bold yellow]"
+            )
+            return
+
         api_key = self.query_one("#api-key-input", Input).value.strip()
 
         if not api_key:
