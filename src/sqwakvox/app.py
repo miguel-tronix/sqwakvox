@@ -316,7 +316,7 @@ class SqwakvoxApp(App[None]):
     def action_clear_chat(self) -> None:
         chat_log = self.query_one("#chat-log", RichLog)
         chat_log.clear()
-        self.call_from_thread(chat_log.write, "[italic]Chat cleared.[/italic]")
+        chat_log.write("[italic]Chat cleared.[/italic]")
 
     def action_scroll_up(self) -> None:
         focused = self.focused
@@ -511,10 +511,10 @@ class SqwakvoxApp(App[None]):
     def _on_parse_success(
         self, structured: StructuredDocument, source: str
     ) -> None:
-        self.is_parsing = False
         self.structured_doc = structured
         self.doc_context = structured.raw_markdown
         self.active_document_name = structured.file_name
+        self.is_parsing = False
 
         if source not in self.ingestion_history:
             self.ingestion_history.append(source)
@@ -545,6 +545,7 @@ class SqwakvoxApp(App[None]):
         )
 
         self.query_one("#chat-input", Input).focus()
+        self._update_ui_state()
 
     def _on_parse_failure(self, error_message: str) -> None:
         self.is_parsing = False
