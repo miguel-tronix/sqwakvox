@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from textual.app import ComposeResult
+from textual.containers import VerticalScroll
 from textual.widgets import Static
 
 from sqwakvox.models import StructuredDocument, TableData
@@ -7,9 +9,7 @@ from sqwakvox.models import StructuredDocument, TableData
 
 class TerminalChartPlotter:
     @staticmethod
-    def render_horizontal_bars(
-        labels: list[str], values: list[float], max_width: int = 40
-    ) -> str:
+    def render_horizontal_bars(labels: list[str], values: list[float], max_width: int = 40) -> str:
         if not values:
             return ""
         max_val = max(values)
@@ -66,13 +66,10 @@ class UnicodeTableFormatter:
             return ""
 
         padded_headers = [h or "" for h in headers] + [""] * (num_cols - len(headers))
-        padded_rows = [
-            [r[i] if i < len(r) else "" for i in range(num_cols)] for r in rows
-        ]
+        padded_rows = [[r[i] if i < len(r) else "" for i in range(num_cols)] for r in rows]
 
         alignments = [
-            UnicodeTableFormatter._detect_alignment(padded_rows, i)
-            for i in range(num_cols)
+            UnicodeTableFormatter._detect_alignment(padded_rows, i) for i in range(num_cols)
         ]
 
         col_widths: list[int] = []
@@ -88,11 +85,7 @@ class UnicodeTableFormatter:
         sep_b = "╧"
 
         top = "╔" + sep_h.join(sep_h * w for w in col_widths) + "╗"
-        header_sep = (
-            "╠" + sep_t.join(sep_h * w for w in col_widths) + "╣"
-            if header_border
-            else ""
-        )
+        header_sep = "╠" + sep_t.join(sep_h * w for w in col_widths) + "╣" if header_border else ""
         body_sep = "╟" + sep_m.join("─" * w for w in col_widths) + "╢"
         bottom = "╚" + sep_b.join(sep_h * w for w in col_widths) + "╝"
 
@@ -119,10 +112,14 @@ class UnicodeTableFormatter:
         return "\n".join(lines)
 
 
-class DocumentRenderPane(Static):
+class DocumentRenderPane(VerticalScroll):
     can_focus = True
 
+    def compose(self) -> ComposeResult:
+        yield Static(id="render-pane-content")
+
     def update_document(self, doc: StructuredDocument) -> None:
+        content_pane = self.query_one("#render-pane-content", Static)
         content: list[str] = []
         content.append(f"[bold]{doc.file_name}[/bold]\n")
 
@@ -140,7 +137,7 @@ class DocumentRenderPane(Static):
                 if spark:
                     content.append(f"\nTrend: {spark}")
 
-        self.update("\n".join(content))
+        content_pane.update("\n".join(content))
 
     @staticmethod
     def _extract_numeric_column(table: TableData) -> list[float]:
@@ -161,4 +158,4 @@ class DocumentRenderPane(Static):
         return []
 
     def clear_document(self) -> None:
-        self.update("")
+        self.query_one("#render-pane-content", Static).update("")

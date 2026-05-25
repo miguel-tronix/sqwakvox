@@ -291,9 +291,7 @@ class SqwakvoxApp(App[None]):
             btn_parse.disabled = True
         else:
             is_ready = bool(self.doc_context)
-            status_bar.update(
-                "Status: Idle | Ready" if is_ready else "Status: Idle"
-            )
+            status_bar.update("Status: Idle | Ready" if is_ready else "Status: Idle")
             spinner.visible = False
             chat_input.disabled = not is_ready
             btn_send.disabled = not is_ready
@@ -349,27 +347,18 @@ class SqwakvoxApp(App[None]):
     def action_cross_validate(self) -> None:
         if not self.structured_doc or not self.structured_doc.tables:
             chat_log = self.query_one("#chat-log", RichLog)
-            chat_log.write(
-                "[bold yellow]No document loaded to cross-validate.[/bold yellow]"
-            )
+            chat_log.write("[bold yellow]No document loaded to cross-validate.[/bold yellow]")
             return
 
         chat_log = self.query_one("#chat-log", RichLog)
-        chat_log.write(
-            "\n[bold underline]Numerical Cross-Validation[/bold underline]"
-        )
+        chat_log.write("\n[bold underline]Numerical Cross-Validation[/bold underline]")
 
         for table in self.structured_doc.tables:
             for col_idx in range(len(table.headers)):
                 values: list[float] = []
                 for row in table.rows:
                     if col_idx < len(row):
-                        cleaned = (
-                            row[col_idx]
-                            .replace("$", "")
-                            .replace(",", "")
-                            .replace("%", "")
-                        )
+                        cleaned = row[col_idx].replace("$", "").replace(",", "").replace("%", "")
                         try:
                             values.append(float(cleaned))
                         except ValueError:
@@ -377,9 +366,7 @@ class SqwakvoxApp(App[None]):
                 if values and len(values) >= 3:
                     expected = values[-1]
                     actual = values[:-1]
-                    if FinancialRuleEngine.verify_column_sum(
-                        actual, expected
-                    ):
+                    if FinancialRuleEngine.verify_column_sum(actual, expected):
                         chat_log.write(
                             f"  [green]✓[/green] Column '{table.headers[col_idx]}' "
                             f"sums to {expected} (actual: {sum(actual):.2f})"
@@ -414,13 +401,9 @@ class SqwakvoxApp(App[None]):
         self.active_error = None
 
         chat_log = self.query_one("#chat-log", RichLog)
+        chat_log.write(f"\n[italic dim]Starting layout ingestion for: {source}...[/italic dim]")
         chat_log.write(
-            f"\n[italic dim]Starting layout ingestion for: "
-            f"{source}...[/italic dim]"
-        )
-        chat_log.write(
-            "[italic dim]Initializing Docling Parser "
-            "(this may take a few seconds)...[/italic dim]"
+            "[italic dim]Initializing Docling Parser (this may take a few seconds)...[/italic dim]"
         )
         logger.info(f"Initiated parsing for document source: {source}")
 
@@ -463,10 +446,7 @@ class SqwakvoxApp(App[None]):
                             else []
                         )
                         if hasattr(tbl, "rows") and tbl.rows:
-                            rows = [
-                                [cell.text for cell in row]
-                                for row in tbl.rows
-                            ]
+                            rows = [[cell.text for cell in row] for row in tbl.rows]
 
                     caption = None
                     caption_text_attr = getattr(tbl, "caption_text", None)
@@ -512,9 +492,7 @@ class SqwakvoxApp(App[None]):
             if not worker.is_cancelled:
                 self.call_from_thread(self._on_parse_failure, str(e))
 
-    def _on_parse_success(
-        self, structured: StructuredDocument, source: str
-    ) -> None:
+    def _on_parse_success(self, structured: StructuredDocument, source: str) -> None:
         self.structured_doc = structured
         self.doc_context = structured.raw_markdown
         self.active_document_name = structured.file_name
@@ -523,9 +501,7 @@ class SqwakvoxApp(App[None]):
         if source not in self.ingestion_history:
             self.ingestion_history.append(source)
             history_list = self.query_one("#ingest-history", ListView)
-            history_list.append(
-                ListItem(Label(f"• {structured.file_name} (Ready)"))
-            )
+            history_list.append(ListItem(Label(f"• {structured.file_name} (Ready)")))
 
         render_pane = self.query_one("#render-pane", DocumentRenderPane)
         render_pane.update_document(structured)
@@ -555,9 +531,7 @@ class SqwakvoxApp(App[None]):
         self.is_parsing = False
         self.active_error = error_message
         chat_log = self.query_one("#chat-log", RichLog)
-        chat_log.write(
-            f"[bold red]✗ Parsing failed:[/bold red] {escape(error_message)}"
-        )
+        chat_log.write(f"[bold red]✗ Parsing failed:[/bold red] {escape(error_message)}")
 
         logger.error(f"Docling parsing failed: {error_message}")
 
@@ -632,26 +606,21 @@ class SqwakvoxApp(App[None]):
             name="any_agent_worker",
         )
 
-    def _execute_agent_background(
-        self, model_id: str, api_key: str, user_query: str
-    ) -> None:
+    def _execute_agent_background(self, model_id: str, api_key: str, user_query: str) -> None:
         chat_log = self.query_one("#chat-log", RichLog)
 
         # 1. Mozilla any-guardrail Input Prompt Verification
         is_query_safe = AnyGuardrailValidator.validate_prompt(user_query)
         if not is_query_safe:
             self.call_from_thread(
-                self._on_agent_blocked,
-                "Mozilla any-guardrail prompt safety violation"
+                self._on_agent_blocked, "Mozilla any-guardrail prompt safety violation"
             )
             return
 
         # 2. Local PII Redaction
         redacted_query = PIIRedactor.redact_text(user_query)
         if redacted_query != user_query:
-            chat_log.write(
-                "[italic dim]PII detected and redacted from query.[/italic dim]"
-            )
+            chat_log.write("[italic dim]PII detected and redacted from query.[/italic dim]")
 
         AuditLogger.log(
             document_id=self.active_document_name or "unknown",
@@ -725,10 +694,7 @@ class SqwakvoxApp(App[None]):
 
     def _on_agent_failure(self, error_message: str) -> None:
         chat_log = self.query_one("#chat-log", RichLog)
-        chat_log.write(
-            f"[bold red]✗ Agent execution failed:[/bold red] "
-            f"{escape(error_message)}"
-        )
+        chat_log.write(f"[bold red]✗ Agent execution failed:[/bold red] {escape(error_message)}")
         AuditLogger.log(
             document_id=self.active_document_name or "unknown",
             operation="agent_response",

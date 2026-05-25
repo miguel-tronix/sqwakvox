@@ -41,17 +41,12 @@ class FinancialRuleEngine:
                 val /= 100.0
 
             for label, known_val in data_store.items():
-                if (
-                    abs(val - known_val) > 0.01
-                    and label.lower() in response_text.lower()
-                ):
+                if abs(val - known_val) > 0.01 and label.lower() in response_text.lower():
                     discrepancies.append(
                         f"LLM value {val} does not match expected {known_val} for '{label}'"
                     )
 
-        return VerificationResult(
-            passed=len(discrepancies) == 0, discrepancies=discrepancies
-        )
+        return VerificationResult(passed=len(discrepancies) == 0, discrepancies=discrepancies)
 
 
 class PIIRedactor:
@@ -101,7 +96,6 @@ class AnyGuardrailValidator:
                 e,
             )
 
-
     @classmethod
     def validate_prompt(cls, prompt: str) -> bool:
         """Validates the prompt using any-guardrail, or falls back to True with safety logging."""
@@ -119,9 +113,7 @@ class AnyGuardrailValidator:
 
 
 class AuditLogger:
-    LOG_PATH = (
-        Path.home() / ".gemini" / "antigravity" / "sqwakvox" / "audit_log.jsonl"
-    )
+    LOG_PATH = Path.home() / ".gemini" / "antigravity" / "sqwakvox" / "audit_log.jsonl"
 
     @classmethod
     def _ensure_log_dir(cls) -> None:
@@ -139,9 +131,7 @@ class AuditLogger:
     ) -> None:
         cls._ensure_log_dir()
         entry = {
-            "timestamp": datetime.now(UTC).strftime(
-                "%Y-%m-%dT%H:%M:%SZ"
-            ),
+            "timestamp": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "document_id": document_id,
             "operation": operation,
             "guardrail_checks": guardrail_checks or {},
@@ -149,9 +139,7 @@ class AuditLogger:
             "risk_score": risk_score,
         }
         if input_text is not None:
-            entry["input_query_hash"] = hashlib.sha256(
-                input_text.encode("utf-8")
-            ).hexdigest()
+            entry["input_query_hash"] = hashlib.sha256(input_text.encode("utf-8")).hexdigest()
 
         try:
             with cls.LOG_PATH.open("a") as f:
