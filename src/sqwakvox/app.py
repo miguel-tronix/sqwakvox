@@ -404,12 +404,12 @@ class SqwakvoxApp(App[None]):
         self.is_parsing = True
         self.active_error = None
         self.run_worker(
-            self._convert_document_in_background(source),
+            lambda: self._convert_document_in_background(source),
             thread=True,
             name="docling_parser",
         )
 
-    async def _convert_document_in_background(self, source: str) -> None:
+    def _convert_document_in_background(self, source: str) -> None:
         worker = get_current_worker()
         try:
             result = self.converter.convert(source)
@@ -574,12 +574,12 @@ class SqwakvoxApp(App[None]):
         chat_log.write("[italic dim]Agent is thinking (via LangChain)...[/italic dim]")
 
         self.run_worker(
-            self._execute_agent_background(selected_model, api_key, user_query),
+            lambda: self._execute_agent_background(selected_model, api_key, user_query),
             thread=True,
             name="any_agent_worker",
         )
 
-    async def _execute_agent_background(
+    def _execute_agent_background(
         self, model_id: str, api_key: str, user_query: str
     ) -> None:
         chat_log = self.query_one("#chat-log", RichLog)
