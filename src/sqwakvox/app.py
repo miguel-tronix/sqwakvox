@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import ClassVar
 
@@ -32,6 +33,8 @@ from sqwakvox.guardrails import (
 )
 from sqwakvox.models import ModelProvider, StructuredDocument, TableData
 from sqwakvox.renderer import DocumentRenderPane
+
+logger = logging.getLogger(__name__)
 
 CSS = """
 Screen {
@@ -403,6 +406,18 @@ class SqwakvoxApp(App[None]):
             return
         self.is_parsing = True
         self.active_error = None
+
+        chat_log = self.query_one("#chat-log", RichLog)
+        chat_log.write(
+            f"\n[italic dim]Starting layout ingestion for: "
+            f"{source}...[/italic dim]"
+        )
+        chat_log.write(
+            "[italic dim]Initializing Docling Parser "
+            "(this may take a few seconds)...[/italic dim]"
+        )
+        logger.info(f"Initiated parsing for document source: {source}")
+
         self.run_worker(
             lambda: self._convert_document_in_background(source),
             thread=True,
@@ -412,9 +427,12 @@ class SqwakvoxApp(App[None]):
     def _convert_document_in_background(self, source: str) -> None:
         worker = get_current_worker()
         try:
+            logger.info(f"Running Docling layout converter on {source}...")
             result = self.converter.convert(source)
             if worker.is_cancelled:
+                logger.info("Docling parsing worker was cancelled.")
                 return
+            logger.info("Docling layout conversion complete. Processing tables...")
 
             doc_md = result.document.export_to_markdown()
             doc_name = Path(source).name if "/" in source or "\\" in source else source
@@ -492,6 +510,11 @@ class SqwakvoxApp(App[None]):
             f"Character count: {char_count}"
         )
 
+        logger.info(
+            f"Successfully loaded and parsed structured document: "
+            f"{structured.file_name} with {char_count} characters."
+        )
+
         AuditLogger.log(
             document_id=structured.file_name,
             operation="document_ingested",
@@ -507,6 +530,8 @@ class SqwakvoxApp(App[None]):
         chat_log.write(
             f"[bold red]✗ Parsing failed:[/bold red] {error_message}"
         )
+
+        logger.error(f"Docling parsing failed: {error_message}")
 
         AuditLogger.log(
             document_id="unknown",
