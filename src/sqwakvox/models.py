@@ -30,11 +30,11 @@ class ModelProvider:
         "mistral:mistral-small-latest": {
             "env_var": "MISTRAL_API_KEY", "friendly_name": "Mistral Small",
         },
-        "google:gemini-1.5-pro": {
-            "env_var": "GOOGLE_API_KEY", "friendly_name": "Gemini 1.5 Pro",
+        "gemini:gemini-1.5-pro": {
+            "env_var": "GEMINI_API_KEY", "friendly_name": "Gemini 1.5 Pro",
         },
-        "google:gemini-1.5-flash": {
-            "env_var": "GOOGLE_API_KEY", "friendly_name": "Gemini 1.5 Flash",
+        "gemini:gemini-1.5-flash": {
+            "env_var": "GEMINI_API_KEY", "friendly_name": "Gemini 1.5 Flash",
         },
     }
 
