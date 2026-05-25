@@ -120,6 +120,8 @@ class UnicodeTableFormatter:
 
 
 class DocumentRenderPane(Static):
+    can_focus = True
+
     def update_document(self, doc: StructuredDocument) -> None:
         content: list[str] = []
         content.append(f"[bold]{doc.file_name}[/bold]\n")

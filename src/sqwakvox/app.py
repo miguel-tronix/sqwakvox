@@ -85,6 +85,10 @@ Screen {
     overflow-y: auto;
 }
 
+#render-pane:focus {
+    border: double $secondary;
+}
+
 #chat-column {
     layout: vertical;
 }
