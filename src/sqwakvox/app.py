@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import ClassVar
 
 from docling.document_converter import DocumentConverter
+from rich.markup import escape
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
@@ -300,7 +301,8 @@ class SqwakvoxApp(App[None]):
     def watch_active_error(self, error: str | None) -> None:
         error_pane = self.query_one("#error-banner", Label)
         if error:
-            error_pane.update(f"[bold white on red]Error: {error}[/]")
+            escaped_error = escape(error)
+            error_pane.update(f"[bold white on red]Error: {escaped_error}[/]")
             error_pane.styles.visibility = "visible"
         else:
             error_pane.styles.visibility = "hidden"
@@ -462,9 +464,30 @@ class SqwakvoxApp(App[None]):
                                 for row in tbl.rows
                             ]
 
-                    caption = getattr(tbl, "caption_text", None) or getattr(tbl, "caption", None)
+                    caption = None
+                    caption_text_attr = getattr(tbl, "caption_text", None)
+                    if caption_text_attr and isinstance(caption_text_attr, str):
+                        caption = caption_text_attr
+                    else:
+                        caption_attr = getattr(tbl, "caption", None)
+                        if caption_attr:
+                            if callable(caption_attr):
+                                try:
+                                    res = caption_attr()
+                                    if isinstance(res, str):
+                                        caption = res
+                                except Exception:
+                                    pass
+                            elif isinstance(caption_attr, str):
+                                caption = caption_attr
+
                     if not caption and hasattr(tbl, "captions") and tbl.captions:
                         caption = " ".join(getattr(c, "text", "") for c in tbl.captions)
+
+                    if caption is not None:
+                        caption = str(caption).strip()
+                        if not caption:
+                            caption = None
 
                     tables.append(
                         TableData(
@@ -528,7 +551,7 @@ class SqwakvoxApp(App[None]):
         self.active_error = error_message
         chat_log = self.query_one("#chat-log", RichLog)
         chat_log.write(
-            f"[bold red]✗ Parsing failed:[/bold red] {error_message}"
+            f"[bold red]✗ Parsing failed:[/bold red] {escape(error_message)}"
         )
 
         logger.error(f"Docling parsing failed: {error_message}")
@@ -685,7 +708,8 @@ class SqwakvoxApp(App[None]):
     def _on_agent_blocked(self, reason: str) -> None:
         chat_log = self.query_one("#chat-log", RichLog)
         chat_log.write(
-            f"[bold red]✗ Input Blocked:[/bold red] Prompt blocked by guardrail system: {reason}"
+            f"[bold red]✗ Input Blocked:[/bold red] "
+            f"Prompt blocked by guardrail system: {escape(reason)}"
         )
         AuditLogger.log(
             document_id=self.active_document_name or "unknown",
@@ -697,7 +721,8 @@ class SqwakvoxApp(App[None]):
     def _on_agent_failure(self, error_message: str) -> None:
         chat_log = self.query_one("#chat-log", RichLog)
         chat_log.write(
-            f"[bold red]✗ Agent execution failed:[/bold red] {error_message}"
+            f"[bold red]✗ Agent execution failed:[/bold red] "
+            f"{escape(error_message)}"
         )
         AuditLogger.log(
             document_id=self.active_document_name or "unknown",
