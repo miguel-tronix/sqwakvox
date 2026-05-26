@@ -6,3 +6,6 @@ __pycache__
 # uv settings
 uv.lock
 .uv
+
+# App logs
+*.log
