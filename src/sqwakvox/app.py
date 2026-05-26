@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import logging
+import re
 from pathlib import Path
 from typing import ClassVar
 
@@ -36,12 +38,52 @@ from sqwakvox.models import ModelProvider, StructuredDocument, TableData
 from sqwakvox.renderer import DocumentRenderPane
 
 logger = logging.getLogger(__name__)
+chat_logger = logging.getLogger("sqwakvox.chat")
+
+
+def _extract_message(error_string: str) -> str:
+    if not error_string:
+        return error_string
+
+    # Try parsing the entire string as JSON
+    try:
+        obj = json.loads(error_string)
+        msg = _walk_for_message(obj)
+        if msg:
+            return msg
+    except json.JSONDecodeError:
+        pass
+
+    # Try finding a JSON object embedded in the string (e.g. "... {'error': {'message': '...'}}")
+    for m in re.finditer(r"\{.*\}", error_string, re.DOTALL):
+        try:
+            obj = json.loads(m.group())
+            msg = _walk_for_message(obj)
+            if msg:
+                return msg
+        except (json.JSONDecodeError, ValueError):
+            continue
+
+    # Fall back to the last line (often the most human-readable part)
+    lines = [l.strip() for l in error_string.splitlines() if l.strip()]
+    return lines[-1] if lines else error_string
+
+
+def _walk_for_message(obj):
+    if isinstance(obj, dict):
+        if "message" in obj and isinstance(obj["message"], str):
+            return obj["message"]
+        for v in obj.values():
+            result = _walk_for_message(v)
+            if result:
+                return result
+    return None
 
 CSS = """
 Screen {
     layout: grid;
     grid-size: 3;
-    grid-columns: 1fr 2fr 2fr;
+    grid-columns: 1fr 3fr 1fr;
     grid-rows: 1fr;
 }
 
@@ -105,7 +147,7 @@ Screen {
 }
 
 #chat-input {
-    height: 3;
+    height: 5;
 }
 
 #status-bar {
@@ -256,7 +298,7 @@ class SqwakvoxApp(App[None]):
         yield DocumentRenderPane(id="render-pane")
 
         with Vertical(id="chat-column"):
-            yield RichLog(id="chat-log", highlight=True, markup=True)
+            yield RichLog(id="chat-log", highlight=True, markup=True, wrap=True)
             with Horizontal(id="chat-input-row"):
                 yield Input(
                     placeholder="Ask a question about the document...",
@@ -303,7 +345,7 @@ class SqwakvoxApp(App[None]):
     def watch_active_error(self, error: str | None) -> None:
         error_pane = self.query_one("#error-banner", Label)
         if error:
-            escaped_error = escape(error)
+            escaped_error = escape(_extract_message(error))
             error_pane.update(f"[bold white on red]Error: {escaped_error}[/]")
             error_pane.styles.visibility = "visible"
         else:
@@ -319,6 +361,7 @@ class SqwakvoxApp(App[None]):
         chat_log = self.query_one("#chat-log", RichLog)
         chat_log.clear()
         chat_log.write("[italic]Chat cleared.[/italic]")
+        chat_logger.info("Chat log cleared by user")
 
     def action_scroll_up(self) -> None:
         focused = self.focused
@@ -512,6 +555,7 @@ class SqwakvoxApp(App[None]):
             f"[bold green]✓ Document loaded successfully.[/bold green] "
             f"Character count: {char_count}"
         )
+        chat_logger.info("Document loaded: %s (%d chars)", structured.file_name, char_count)
 
         logger.info(
             f"Successfully loaded and parsed structured document: "
@@ -531,7 +575,7 @@ class SqwakvoxApp(App[None]):
         self.is_parsing = False
         self.active_error = error_message
         chat_log = self.query_one("#chat-log", RichLog)
-        chat_log.write(f"[bold red]✗ Parsing failed:[/bold red] {escape(error_message)}")
+        chat_log.write(f"[bold red]✗ Parsing failed:[/bold red] {escape(_extract_message(error_message))}")
 
         logger.error(f"Docling parsing failed: {error_message}")
 
@@ -573,6 +617,7 @@ class SqwakvoxApp(App[None]):
             return
 
         chat_log = self.query_one("#chat-log", RichLog)
+        chat_logger.info("User query: %s", user_query)
         chat_log.write(f"\n[bold blue]You:[/bold blue] {user_query}")
         chat_input.value = ""
 
@@ -598,6 +643,7 @@ class SqwakvoxApp(App[None]):
             )
             return
 
+        chat_logger.info("Agent invoked — model: %s", selected_model)
         chat_log.write("[italic dim]Agent is thinking (via LangChain)...[/italic dim]")
 
         self.run_worker(
@@ -610,8 +656,10 @@ class SqwakvoxApp(App[None]):
         chat_log = self.query_one("#chat-log", RichLog)
 
         # 1. Mozilla any-guardrail Input Prompt Verification
+        chat_logger.info("Guardrail check — model: %s", model_id)
         is_query_safe = AnyGuardrailValidator.validate_prompt(user_query)
         if not is_query_safe:
+            chat_logger.warning("Guardrail BLOCKED query: %s", user_query)
             self.call_from_thread(
                 self._on_agent_blocked, "Mozilla any-guardrail prompt safety violation"
             )
@@ -671,6 +719,7 @@ class SqwakvoxApp(App[None]):
     def _on_agent_success(self, response: str, query: str) -> None:
         chat_log = self.query_one("#chat-log", RichLog)
         chat_log.write(f"[bold green]Agent:[/bold green] {response}")
+        chat_logger.info("Agent response (%d chars)", len(response))
 
         AuditLogger.log(
             document_id=self.active_document_name or "unknown",
@@ -683,8 +732,9 @@ class SqwakvoxApp(App[None]):
         chat_log = self.query_one("#chat-log", RichLog)
         chat_log.write(
             f"[bold red]✗ Input Blocked:[/bold red] "
-            f"Prompt blocked by guardrail system: {escape(reason)}"
+            f"Prompt blocked by guardrail system: {escape(_extract_message(reason))}"
         )
+        chat_logger.warning("Agent BLOCKED: %s", reason)
         AuditLogger.log(
             document_id=self.active_document_name or "unknown",
             operation="user_query",
@@ -693,8 +743,10 @@ class SqwakvoxApp(App[None]):
         )
 
     def _on_agent_failure(self, error_message: str) -> None:
+        display_message = _extract_message(error_message)
         chat_log = self.query_one("#chat-log", RichLog)
-        chat_log.write(f"[bold red]✗ Agent execution failed:[/bold red] {escape(error_message)}")
+        chat_log.write(f"[bold red]✗ Agent execution failed:[/bold red] {escape(display_message)}")
+        chat_logger.error("Agent FAILURE: %s", error_message)
         AuditLogger.log(
             document_id=self.active_document_name or "unknown",
             operation="agent_response",

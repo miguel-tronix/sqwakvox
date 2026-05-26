@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import threading
 from collections.abc import Generator
@@ -7,6 +8,8 @@ from contextlib import contextmanager
 
 from any_agent import AgentConfig, AgentFramework
 from any_agent import AnyAgent as AnyAgentLib
+
+logger = logging.getLogger(__name__)
 
 
 class AnyAgentOrchestrator:
@@ -50,10 +53,13 @@ class AnyAgentOrchestrator:
             instructions=instructions,
         )
 
+        logger.info("Starting any-agent execution — model: %s", model_id)
         with cls.inject_credentials(env_var, api_key):
             agent = AnyAgentLib.create(
                 agent_framework=AgentFramework("langchain"),
                 agent_config=config,
             )
             trace = agent.run(prompt)
-            return str(trace.final_output)
+            response = str(trace.final_output)
+            logger.info("Agent execution complete — response length: %d chars", len(response))
+            return response

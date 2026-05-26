@@ -37,7 +37,7 @@ class ModelProvider:
             "env_var": "GEMINI_API_KEY",
             "friendly_name": "Gemini 2.5 Pro",
         },
-        "gemini:gemini-1.5-flash": {
+        "gemini:gemini-2.5-flash": {
             "env_var": "GEMINI_API_KEY",
             "friendly_name": "Gemini 2.5 Flash",
         },

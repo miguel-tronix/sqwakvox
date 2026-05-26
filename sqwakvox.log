@@ -661,3 +661,669 @@ Traceback (most recent call last):
   File "/usr/lib/python3.12/asyncio/base_events.py", line 541, in _check_closed
     raise RuntimeError('Event loop is closed')
 RuntimeError: Event loop is closed
+2026-05-25 21:09:03,388 [INFO] root: Sqwakvox application starting...
+2026-05-25 21:41:57,514 [INFO] sqwakvox.app: Initiated parsing for document source: /data3/app2/sqwakvox/samples/fs023-sample-financial-statements.pdf
+2026-05-25 21:41:57,523 [INFO] sqwakvox.app: Running Docling layout converter on /data3/app2/sqwakvox/samples/fs023-sample-financial-statements.pdf...
+2026-05-25 21:41:57,555 [INFO] docling.datamodel.document: detected formats: [<InputFormat.PDF: 'pdf'>]
+2026-05-25 21:41:58,060 [INFO] docling.document_converter: Going to convert document batch...
+2026-05-25 21:41:58,078 [INFO] docling.document_converter: Initializing pipeline for StandardPdfPipeline with options hash 80a8a1322ca5ef46817c7adbf875fff6
+2026-05-25 21:41:59,066 [INFO] docling.models.factories.base_factory: Loading plugin 'docling_defaults'
+2026-05-25 21:41:59,310 [INFO] docling.models.factories: Registered picture descriptions: ['picture_description_vlm_engine', 'vlm', 'api']
+2026-05-25 21:41:59,713 [INFO] docling.models.factories.base_factory: Loading plugin 'docling_defaults'
+2026-05-25 21:41:59,893 [INFO] docling.models.factories: Registered ocr engines: ['auto', 'easyocr', 'kserve_v2_ocr', 'ocrmac', 'rapidocr', 'tesserocr', 'tesseract']
+2026-05-25 21:42:00,654 [INFO] docling.models.stages.ocr.auto_ocr_model: rapidocr cannot be used because onnxruntime is not installed.
+2026-05-25 21:42:00,656 [INFO] docling.models.stages.ocr.auto_ocr_model: easyocr cannot be used because it is not installed.
+2026-05-25 21:42:04,693 [INFO] docling.utils.accelerator_utils: Accelerator device: 'cpu'
+2026-05-25 21:42:17,684 [INFO] docling.models.stages.ocr.auto_ocr_model: Auto OCR model selected rapidocr with torch.
+2026-05-25 21:42:17,840 [INFO] docling.models.factories.base_factory: Loading plugin 'docling_defaults'
+2026-05-25 21:42:17,882 [INFO] docling.models.factories: Registered layout engines: ['layout_object_detection', 'docling_layout_default', 'docling_experimental_table_crops_layout']
+2026-05-25 21:42:18,071 [INFO] docling.utils.accelerator_utils: Accelerator device: 'cpu'
+2026-05-25 21:42:18,913 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/docling-project/docling-layout-heron/revision/main "HTTP/1.1 200 OK"
+2026-05-25 21:42:26,233 [INFO] docling.models.factories.base_factory: Loading plugin 'docling_defaults'
+2026-05-25 21:42:26,275 [INFO] docling.models.factories: Registered table structure engines: ['docling_tableformer', 'docling_tableformer_v2', 'granite_vision_table']
+2026-05-25 21:42:26,647 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/docling-project/docling-models/revision/v2.3.0 "HTTP/1.1 200 OK"
+2026-05-25 21:42:27,030 [INFO] docling.utils.accelerator_utils: Accelerator device: 'cpu'
+2026-05-25 21:42:41,294 [INFO] docling.pipeline.base_pipeline: Processing document fs023-sample-financial-statements.pdf
+2026-05-25 21:51:58,003 [INFO] docling.document_converter: Finished converting document fs023-sample-financial-statements.pdf in 600.48 sec.
+2026-05-25 21:51:58,009 [INFO] sqwakvox.app: Docling layout conversion complete. Processing tables...
+2026-05-25 21:51:58,580 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-25 21:51:58,609 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-25 21:51:58,621 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-25 21:51:58,648 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-25 21:51:58,655 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-25 21:51:58,676 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-25 21:51:58,701 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-25 21:51:58,875 [INFO] sqwakvox.app: Successfully loaded and parsed structured document: fs023-sample-financial-statements.pdf with 9267 characters.
+2026-05-26 07:05:21,057 [INFO] root: Sqwakvox application starting...
+2026-05-26 07:19:32,306 [INFO] sqwakvox.app: Initiated parsing for document source: /data3/app2/sqwakvox/samples/fs023-sample-financial-statements.pdf
+2026-05-26 07:19:32,313 [INFO] sqwakvox.app: Running Docling layout converter on /data3/app2/sqwakvox/samples/fs023-sample-financial-statements.pdf...
+2026-05-26 07:19:32,363 [INFO] docling.datamodel.document: detected formats: [<InputFormat.PDF: 'pdf'>]
+2026-05-26 07:19:33,035 [INFO] docling.document_converter: Going to convert document batch...
+2026-05-26 07:19:33,058 [INFO] docling.document_converter: Initializing pipeline for StandardPdfPipeline with options hash 80a8a1322ca5ef46817c7adbf875fff6
+2026-05-26 07:19:34,288 [INFO] docling.models.factories.base_factory: Loading plugin 'docling_defaults'
+2026-05-26 07:19:34,444 [INFO] docling.models.factories: Registered picture descriptions: ['picture_description_vlm_engine', 'vlm', 'api']
+2026-05-26 07:19:34,626 [INFO] docling.models.factories.base_factory: Loading plugin 'docling_defaults'
+2026-05-26 07:19:34,811 [INFO] docling.models.factories: Registered ocr engines: ['auto', 'easyocr', 'kserve_v2_ocr', 'ocrmac', 'rapidocr', 'tesserocr', 'tesseract']
+2026-05-26 07:19:35,546 [INFO] docling.models.stages.ocr.auto_ocr_model: rapidocr cannot be used because onnxruntime is not installed.
+2026-05-26 07:19:35,548 [INFO] docling.models.stages.ocr.auto_ocr_model: easyocr cannot be used because it is not installed.
+2026-05-26 07:19:42,068 [INFO] docling.utils.accelerator_utils: Accelerator device: 'cpu'
+2026-05-26 07:19:59,983 [INFO] docling.models.stages.ocr.auto_ocr_model: Auto OCR model selected rapidocr with torch.
+2026-05-26 07:20:00,130 [INFO] docling.models.factories.base_factory: Loading plugin 'docling_defaults'
+2026-05-26 07:20:00,181 [INFO] docling.models.factories: Registered layout engines: ['layout_object_detection', 'docling_layout_default', 'docling_experimental_table_crops_layout']
+2026-05-26 07:20:00,336 [INFO] docling.utils.accelerator_utils: Accelerator device: 'cpu'
+2026-05-26 07:20:01,239 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/docling-project/docling-layout-heron/revision/main "HTTP/1.1 200 OK"
+2026-05-26 07:20:13,328 [INFO] docling.models.factories.base_factory: Loading plugin 'docling_defaults'
+2026-05-26 07:20:13,375 [INFO] docling.models.factories: Registered table structure engines: ['docling_tableformer', 'docling_tableformer_v2', 'granite_vision_table']
+2026-05-26 07:20:13,793 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/docling-project/docling-models/revision/v2.3.0 "HTTP/1.1 200 OK"
+2026-05-26 07:20:14,085 [INFO] docling.utils.accelerator_utils: Accelerator device: 'cpu'
+2026-05-26 07:20:28,673 [INFO] docling.pipeline.base_pipeline: Processing document fs023-sample-financial-statements.pdf
+2026-05-26 07:29:45,931 [INFO] docling.document_converter: Finished converting document fs023-sample-financial-statements.pdf in 613.61 sec.
+2026-05-26 07:29:45,937 [INFO] sqwakvox.app: Docling layout conversion complete. Processing tables...
+2026-05-26 07:29:46,453 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 07:29:46,473 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 07:29:46,482 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 07:29:46,508 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 07:29:46,525 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 07:29:46,534 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 07:29:46,549 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 07:29:46,729 [INFO] sqwakvox.app: Successfully loaded and parsed structured document: fs023-sample-financial-statements.pdf with 9267 characters.
+2026-05-26 07:34:23,606 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 07:34:23,846 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 07:34:23,850 [WARNING] huggingface_hub.utils._http: Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+2026-05-26 07:34:23,870 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/config.json "HTTP/1.1 200 OK"
+2026-05-26 07:34:24,173 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/modeling_piguard.py "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 07:34:24,526 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/modeling_piguard.py "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 07:34:24,834 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/modeling_piguard.py "HTTP/1.1 200 OK"
+2026-05-26 07:34:25,547 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/modeling_piguard.py "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 07:34:25,859 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/modeling_piguard.py "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 07:34:25,956 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/modeling_piguard.py "HTTP/1.1 200 OK"
+2026-05-26 07:34:29,165 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 07:34:29,704 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 07:34:29,737 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/config.json "HTTP/1.1 200 OK"
+2026-05-26 07:34:30,153 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/modeling_piguard.py "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 07:34:30,451 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/modeling_piguard.py "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 07:34:30,474 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/modeling_piguard.py "HTTP/1.1 200 OK"
+2026-05-26 07:34:30,921 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 07:34:31,220 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 07:34:31,242 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/config.json "HTTP/1.1 200 OK"
+2026-05-26 07:34:31,633 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 07:34:31,882 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 07:34:31,909 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-26 07:34:32,232 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/leolee99/InjecGuard/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 07:34:32,529 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/leolee99/PIGuard/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-05-26 07:34:32,787 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/leolee99/InjecGuard/tree/main?recursive=true&expand=false "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 07:34:33,127 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/leolee99/PIGuard/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-05-26 07:34:38,964 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/leolee99/InjecGuard "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 07:34:39,205 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/leolee99/PIGuard "HTTP/1.1 200 OK"
+2026-05-26 07:34:39,215 [INFO] sqwakvox.guardrails: Mozilla any-guardrail successfully initialized with INJECGUARD.
+2026-05-26 07:35:42,126 [INFO] google_genai.models: AFC is enabled with max remote calls: 10.
+2026-05-26 07:35:43,491 [INFO] httpx: HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent "HTTP/1.1 429 Too Many Requests"
+2026-05-26 07:38:43,486 [ERROR] asyncio: Task exception was never retrieved
+future: <Task finished name='Task-4529' exception=RuntimeError('Event loop is closed')>
+Traceback (most recent call last):
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/google/genai/_api_client.py", line 2179, in aclose
+    await self._async_httpx_client.aclose()  # type: ignore[union-attr]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/httpx/_client.py", line 1985, in aclose
+    await self._transport.aclose()
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/httpx/_transports/default.py", line 406, in aclose
+    await self._pool.aclose()
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/httpcore/_async/connection_pool.py", line 353, in aclose
+    await self._close_connections(closing_connections)
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/httpcore/_async/connection_pool.py", line 345, in _close_connections
+    await connection.aclose()
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/httpcore/_async/connection.py", line 173, in aclose
+    await self._connection.aclose()
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/httpcore/_async/http11.py", line 258, in aclose
+    await self._network_stream.aclose()
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/httpcore/_backends/anyio.py", line 53, in aclose
+    await self._stream.aclose()
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/anyio/streams/tls.py", line 236, in aclose
+    await self.transport_stream.aclose()
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/anyio/_backends/_asyncio.py", line 1344, in aclose
+    self._transport.close()
+  File "/usr/lib/python3.12/asyncio/selector_events.py", line 1211, in close
+    super().close()
+  File "/usr/lib/python3.12/asyncio/selector_events.py", line 875, in close
+    self._loop.call_soon(self._call_connection_lost, None)
+  File "/usr/lib/python3.12/asyncio/base_events.py", line 795, in call_soon
+    self._check_closed()
+  File "/usr/lib/python3.12/asyncio/base_events.py", line 541, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+2026-05-26 08:29:30,459 [INFO] root: Sqwakvox application starting...
+2026-05-26 08:35:08,528 [INFO] root: Sqwakvox application starting...
+2026-05-26 08:36:16,177 [INFO] root: Sqwakvox application starting...
+2026-05-26 08:36:30,182 [INFO] sqwakvox.app: Initiated parsing for document source: /data3/app2/sqwakvox/samples/fs023-sample-financial-statements.pdf
+2026-05-26 08:36:30,188 [INFO] sqwakvox.app: Running Docling layout converter on /data3/app2/sqwakvox/samples/fs023-sample-financial-statements.pdf...
+2026-05-26 08:36:30,210 [INFO] docling.datamodel.document: detected formats: [<InputFormat.PDF: 'pdf'>]
+2026-05-26 08:36:30,492 [INFO] docling.document_converter: Going to convert document batch...
+2026-05-26 08:36:30,497 [INFO] docling.document_converter: Initializing pipeline for StandardPdfPipeline with options hash 80a8a1322ca5ef46817c7adbf875fff6
+2026-05-26 08:36:30,940 [INFO] docling.models.factories.base_factory: Loading plugin 'docling_defaults'
+2026-05-26 08:36:30,958 [INFO] docling.models.factories: Registered picture descriptions: ['picture_description_vlm_engine', 'vlm', 'api']
+2026-05-26 08:36:30,992 [INFO] docling.models.factories.base_factory: Loading plugin 'docling_defaults'
+2026-05-26 08:36:31,030 [INFO] docling.models.factories: Registered ocr engines: ['auto', 'easyocr', 'kserve_v2_ocr', 'ocrmac', 'rapidocr', 'tesserocr', 'tesseract']
+2026-05-26 08:36:31,144 [INFO] docling.models.stages.ocr.auto_ocr_model: rapidocr cannot be used because onnxruntime is not installed.
+2026-05-26 08:36:31,144 [INFO] docling.models.stages.ocr.auto_ocr_model: easyocr cannot be used because it is not installed.
+2026-05-26 08:36:31,697 [INFO] docling.utils.accelerator_utils: Accelerator device: 'cpu'
+2026-05-26 08:36:33,076 [INFO] docling.models.stages.ocr.auto_ocr_model: Auto OCR model selected rapidocr with torch.
+2026-05-26 08:36:33,087 [INFO] docling.models.factories.base_factory: Loading plugin 'docling_defaults'
+2026-05-26 08:36:33,108 [INFO] docling.models.factories: Registered layout engines: ['layout_object_detection', 'docling_layout_default', 'docling_experimental_table_crops_layout']
+2026-05-26 08:36:33,127 [INFO] docling.utils.accelerator_utils: Accelerator device: 'cpu'
+2026-05-26 08:36:33,738 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/docling-project/docling-layout-heron/revision/main "HTTP/1.1 200 OK"
+2026-05-26 08:36:34,759 [INFO] docling.models.factories.base_factory: Loading plugin 'docling_defaults'
+2026-05-26 08:36:34,883 [INFO] docling.models.factories: Registered table structure engines: ['docling_tableformer', 'docling_tableformer_v2', 'granite_vision_table']
+2026-05-26 08:36:35,268 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/docling-project/docling-models/revision/v2.3.0 "HTTP/1.1 200 OK"
+2026-05-26 08:36:35,307 [INFO] docling.utils.accelerator_utils: Accelerator device: 'cpu'
+2026-05-26 08:36:35,847 [INFO] docling.pipeline.base_pipeline: Processing document fs023-sample-financial-statements.pdf
+2026-05-26 08:38:32,510 [INFO] docling.document_converter: Finished converting document fs023-sample-financial-statements.pdf in 122.32 sec.
+2026-05-26 08:38:32,513 [INFO] sqwakvox.app: Docling layout conversion complete. Processing tables...
+2026-05-26 08:38:32,579 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 08:38:32,581 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 08:38:32,582 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 08:38:32,583 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 08:38:32,584 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 08:38:32,585 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 08:38:32,586 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 08:38:32,636 [INFO] sqwakvox.app: Successfully loaded and parsed structured document: fs023-sample-financial-statements.pdf with 9267 characters.
+2026-05-26 08:40:27,208 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 08:40:27,823 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 08:40:27,824 [WARNING] huggingface_hub.utils._http: Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+2026-05-26 08:40:27,845 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/config.json "HTTP/1.1 200 OK"
+2026-05-26 08:40:28,234 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/modeling_piguard.py "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 08:40:28,559 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/modeling_piguard.py "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 08:40:28,586 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/modeling_piguard.py "HTTP/1.1 200 OK"
+2026-05-26 08:40:29,166 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/modeling_piguard.py "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 08:40:29,460 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/modeling_piguard.py "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 08:40:29,772 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/modeling_piguard.py "HTTP/1.1 200 OK"
+2026-05-26 08:40:30,186 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 08:40:30,488 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 08:40:30,793 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/config.json "HTTP/1.1 200 OK"
+2026-05-26 08:40:31,205 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/modeling_piguard.py "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 08:40:31,611 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/modeling_piguard.py "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 08:40:31,630 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/modeling_piguard.py "HTTP/1.1 200 OK"
+2026-05-26 08:40:31,922 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 08:40:32,201 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 08:40:32,538 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/config.json "HTTP/1.1 200 OK"
+2026-05-26 08:40:32,841 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 08:40:33,109 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 08:40:33,266 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-26 08:40:33,604 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/leolee99/InjecGuard/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 08:40:33,965 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/leolee99/PIGuard/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-05-26 08:40:34,202 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/leolee99/InjecGuard/tree/main?recursive=true&expand=false "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 08:40:34,501 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/leolee99/PIGuard/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-05-26 08:40:36,022 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/leolee99/InjecGuard "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 08:40:36,430 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/leolee99/PIGuard "HTTP/1.1 200 OK"
+2026-05-26 08:40:36,431 [INFO] sqwakvox.guardrails: Mozilla any-guardrail successfully initialized with INJECGUARD.
+2026-05-26 08:40:39,428 [INFO] sqwakvox.agent: Starting any-agent execution — model: gemini:gemini-2.5-pro
+2026-05-26 08:40:41,726 [INFO] google_genai.models: AFC is enabled with max remote calls: 10.
+2026-05-26 08:40:42,471 [INFO] httpx: HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent "HTTP/1.1 429 Too Many Requests"
+2026-05-26 08:41:08,951 [ERROR] asyncio: Task exception was never retrieved
+future: <Task finished name='Task-4110' exception=RuntimeError('Event loop is closed')>
+Traceback (most recent call last):
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/google/genai/_api_client.py", line 2179, in aclose
+    await self._async_httpx_client.aclose()  # type: ignore[union-attr]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/httpx/_client.py", line 1985, in aclose
+    await self._transport.aclose()
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/httpx/_transports/default.py", line 406, in aclose
+    await self._pool.aclose()
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/httpcore/_async/connection_pool.py", line 353, in aclose
+    await self._close_connections(closing_connections)
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/httpcore/_async/connection_pool.py", line 345, in _close_connections
+    await connection.aclose()
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/httpcore/_async/connection.py", line 173, in aclose
+    await self._connection.aclose()
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/httpcore/_async/http11.py", line 258, in aclose
+    await self._network_stream.aclose()
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/httpcore/_backends/anyio.py", line 53, in aclose
+    await self._stream.aclose()
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/anyio/streams/tls.py", line 236, in aclose
+    await self.transport_stream.aclose()
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/anyio/_backends/_asyncio.py", line 1344, in aclose
+    self._transport.close()
+  File "/usr/lib/python3.12/asyncio/selector_events.py", line 1211, in close
+    super().close()
+  File "/usr/lib/python3.12/asyncio/selector_events.py", line 875, in close
+    self._loop.call_soon(self._call_connection_lost, None)
+  File "/usr/lib/python3.12/asyncio/base_events.py", line 795, in call_soon
+    self._check_closed()
+  File "/usr/lib/python3.12/asyncio/base_events.py", line 541, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+2026-05-26 08:43:13,720 [INFO] root: Sqwakvox application starting...
+2026-05-26 08:52:55,131 [INFO] root: Sqwakvox application starting...
+2026-05-26 08:54:36,041 [INFO] sqwakvox.app: Initiated parsing for document source: /data3/app2/sqwakvox/samples/fs023-sample-financial-statements.pdf
+2026-05-26 08:54:36,047 [INFO] sqwakvox.app: Running Docling layout converter on /data3/app2/sqwakvox/samples/fs023-sample-financial-statements.pdf...
+2026-05-26 08:54:36,332 [INFO] docling.datamodel.document: detected formats: [<InputFormat.PDF: 'pdf'>]
+2026-05-26 08:54:36,702 [INFO] docling.document_converter: Going to convert document batch...
+2026-05-26 08:54:36,708 [INFO] docling.document_converter: Initializing pipeline for StandardPdfPipeline with options hash 80a8a1322ca5ef46817c7adbf875fff6
+2026-05-26 08:54:36,755 [INFO] docling.models.factories.base_factory: Loading plugin 'docling_defaults'
+2026-05-26 08:54:36,761 [INFO] docling.models.factories: Registered picture descriptions: ['picture_description_vlm_engine', 'vlm', 'api']
+2026-05-26 08:54:36,787 [INFO] docling.models.factories.base_factory: Loading plugin 'docling_defaults'
+2026-05-26 08:54:36,816 [INFO] docling.models.factories: Registered ocr engines: ['auto', 'easyocr', 'kserve_v2_ocr', 'ocrmac', 'rapidocr', 'tesserocr', 'tesseract']
+2026-05-26 08:54:36,889 [INFO] docling.models.stages.ocr.auto_ocr_model: rapidocr cannot be used because onnxruntime is not installed.
+2026-05-26 08:54:36,889 [INFO] docling.models.stages.ocr.auto_ocr_model: easyocr cannot be used because it is not installed.
+2026-05-26 08:54:37,308 [INFO] docling.utils.accelerator_utils: Accelerator device: 'cpu'
+2026-05-26 08:54:38,746 [INFO] docling.models.stages.ocr.auto_ocr_model: Auto OCR model selected rapidocr with torch.
+2026-05-26 08:54:38,756 [INFO] docling.models.factories.base_factory: Loading plugin 'docling_defaults'
+2026-05-26 08:54:38,761 [INFO] docling.models.factories: Registered layout engines: ['layout_object_detection', 'docling_layout_default', 'docling_experimental_table_crops_layout']
+2026-05-26 08:54:38,778 [INFO] docling.utils.accelerator_utils: Accelerator device: 'cpu'
+2026-05-26 08:54:39,345 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/docling-project/docling-layout-heron/revision/main "HTTP/1.1 200 OK"
+2026-05-26 08:54:40,036 [INFO] docling.models.factories.base_factory: Loading plugin 'docling_defaults'
+2026-05-26 08:54:40,045 [INFO] docling.models.factories: Registered table structure engines: ['docling_tableformer', 'docling_tableformer_v2', 'granite_vision_table']
+2026-05-26 08:54:40,344 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/docling-project/docling-models/revision/v2.3.0 "HTTP/1.1 200 OK"
+2026-05-26 08:54:40,376 [INFO] docling.utils.accelerator_utils: Accelerator device: 'cpu'
+2026-05-26 08:54:40,936 [INFO] docling.pipeline.base_pipeline: Processing document fs023-sample-financial-statements.pdf
+2026-05-26 08:56:37,134 [INFO] docling.document_converter: Finished converting document fs023-sample-financial-statements.pdf in 121.08 sec.
+2026-05-26 08:56:37,134 [INFO] sqwakvox.app: Docling layout conversion complete. Processing tables...
+2026-05-26 08:56:37,212 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 08:56:37,221 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 08:56:37,222 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 08:56:37,226 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 08:56:37,228 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 08:56:37,230 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 08:56:37,238 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 08:56:37,293 [INFO] sqwakvox.app: Successfully loaded and parsed structured document: fs023-sample-financial-statements.pdf with 9267 characters.
+2026-05-26 09:00:19,493 [INFO] root: Sqwakvox application starting...
+2026-05-26 09:10:59,378 [INFO] root: Sqwakvox application starting...
+2026-05-26 09:11:16,303 [INFO] sqwakvox.app: Initiated parsing for document source: /data3/app2/sqwakvox/samples/fs023-sample-financial-statements.pdf
+2026-05-26 09:11:16,308 [INFO] sqwakvox.app: Running Docling layout converter on /data3/app2/sqwakvox/samples/fs023-sample-financial-statements.pdf...
+2026-05-26 09:11:16,331 [INFO] docling.datamodel.document: detected formats: [<InputFormat.PDF: 'pdf'>]
+2026-05-26 09:11:16,344 [INFO] docling.document_converter: Going to convert document batch...
+2026-05-26 09:11:16,345 [INFO] docling.document_converter: Initializing pipeline for StandardPdfPipeline with options hash 80a8a1322ca5ef46817c7adbf875fff6
+2026-05-26 09:11:16,483 [INFO] docling.models.factories.base_factory: Loading plugin 'docling_defaults'
+2026-05-26 09:11:16,486 [INFO] docling.models.factories: Registered picture descriptions: ['picture_description_vlm_engine', 'vlm', 'api']
+2026-05-26 09:11:16,545 [INFO] docling.models.factories.base_factory: Loading plugin 'docling_defaults'
+2026-05-26 09:11:16,567 [INFO] docling.models.factories: Registered ocr engines: ['auto', 'easyocr', 'kserve_v2_ocr', 'ocrmac', 'rapidocr', 'tesserocr', 'tesseract']
+2026-05-26 09:11:16,625 [INFO] docling.models.stages.ocr.auto_ocr_model: rapidocr cannot be used because onnxruntime is not installed.
+2026-05-26 09:11:16,626 [INFO] docling.models.stages.ocr.auto_ocr_model: easyocr cannot be used because it is not installed.
+2026-05-26 09:11:16,905 [INFO] docling.utils.accelerator_utils: Accelerator device: 'cpu'
+2026-05-26 09:11:17,960 [INFO] docling.models.stages.ocr.auto_ocr_model: Auto OCR model selected rapidocr with torch.
+2026-05-26 09:11:17,968 [INFO] docling.models.factories.base_factory: Loading plugin 'docling_defaults'
+2026-05-26 09:11:17,970 [INFO] docling.models.factories: Registered layout engines: ['layout_object_detection', 'docling_layout_default', 'docling_experimental_table_crops_layout']
+2026-05-26 09:11:17,987 [INFO] docling.utils.accelerator_utils: Accelerator device: 'cpu'
+2026-05-26 09:11:18,294 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/docling-project/docling-layout-heron/revision/main "HTTP/1.1 200 OK"
+2026-05-26 09:11:18,948 [INFO] docling.models.factories.base_factory: Loading plugin 'docling_defaults'
+2026-05-26 09:11:18,950 [INFO] docling.models.factories: Registered table structure engines: ['docling_tableformer', 'docling_tableformer_v2', 'granite_vision_table']
+2026-05-26 09:11:19,196 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/docling-project/docling-models/revision/v2.3.0 "HTTP/1.1 200 OK"
+2026-05-26 09:11:19,221 [INFO] docling.utils.accelerator_utils: Accelerator device: 'cpu'
+2026-05-26 09:11:19,816 [INFO] docling.pipeline.base_pipeline: Processing document fs023-sample-financial-statements.pdf
+2026-05-26 09:28:33,186 [INFO] root: Sqwakvox application starting...
+2026-05-26 09:28:57,963 [INFO] sqwakvox.app: Initiated parsing for document source: /data3/app2/sqwakvox/samples/fs023-sample-financial-statements.pdf
+2026-05-26 09:28:57,969 [INFO] sqwakvox.app: Running Docling layout converter on /data3/app2/sqwakvox/samples/fs023-sample-financial-statements.pdf...
+2026-05-26 09:28:58,003 [INFO] docling.datamodel.document: detected formats: [<InputFormat.PDF: 'pdf'>]
+2026-05-26 09:28:58,454 [INFO] docling.document_converter: Going to convert document batch...
+2026-05-26 09:28:58,464 [INFO] docling.document_converter: Initializing pipeline for StandardPdfPipeline with options hash 80a8a1322ca5ef46817c7adbf875fff6
+2026-05-26 09:28:58,548 [INFO] docling.models.factories.base_factory: Loading plugin 'docling_defaults'
+2026-05-26 09:28:58,559 [INFO] docling.models.factories: Registered picture descriptions: ['picture_description_vlm_engine', 'vlm', 'api']
+2026-05-26 09:28:58,602 [INFO] docling.models.factories.base_factory: Loading plugin 'docling_defaults'
+2026-05-26 09:28:58,656 [INFO] docling.models.factories: Registered ocr engines: ['auto', 'easyocr', 'kserve_v2_ocr', 'ocrmac', 'rapidocr', 'tesserocr', 'tesseract']
+2026-05-26 09:28:58,784 [INFO] docling.models.stages.ocr.auto_ocr_model: rapidocr cannot be used because onnxruntime is not installed.
+2026-05-26 09:28:58,784 [INFO] docling.models.stages.ocr.auto_ocr_model: easyocr cannot be used because it is not installed.
+2026-05-26 09:29:01,303 [INFO] docling.utils.accelerator_utils: Accelerator device: 'cpu'
+2026-05-26 09:29:04,297 [INFO] docling.models.stages.ocr.auto_ocr_model: Auto OCR model selected rapidocr with torch.
+2026-05-26 09:29:04,311 [INFO] docling.models.factories.base_factory: Loading plugin 'docling_defaults'
+2026-05-26 09:29:04,331 [INFO] docling.models.factories: Registered layout engines: ['layout_object_detection', 'docling_layout_default', 'docling_experimental_table_crops_layout']
+2026-05-26 09:29:04,355 [INFO] docling.utils.accelerator_utils: Accelerator device: 'cpu'
+2026-05-26 09:29:04,924 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/docling-project/docling-layout-heron/revision/main "HTTP/1.1 200 OK"
+2026-05-26 09:29:09,117 [INFO] docling.models.factories.base_factory: Loading plugin 'docling_defaults'
+2026-05-26 09:29:09,124 [INFO] docling.models.factories: Registered table structure engines: ['docling_tableformer', 'docling_tableformer_v2', 'granite_vision_table']
+2026-05-26 09:29:09,521 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/docling-project/docling-models/revision/v2.3.0 "HTTP/1.1 200 OK"
+2026-05-26 09:29:09,628 [INFO] docling.utils.accelerator_utils: Accelerator device: 'cpu'
+2026-05-26 09:29:24,177 [INFO] docling.pipeline.base_pipeline: Processing document fs023-sample-financial-statements.pdf
+2026-05-26 09:31:18,480 [INFO] docling.document_converter: Finished converting document fs023-sample-financial-statements.pdf in 140.51 sec.
+2026-05-26 09:31:18,480 [INFO] sqwakvox.app: Docling layout conversion complete. Processing tables...
+2026-05-26 09:31:18,564 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 09:31:18,567 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 09:31:18,567 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 09:31:18,569 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 09:31:18,570 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 09:31:18,571 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 09:31:18,573 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 09:31:18,652 [INFO] sqwakvox.app: Successfully loaded and parsed structured document: fs023-sample-financial-statements.pdf with 9267 characters.
+2026-05-26 09:32:48,455 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 09:32:48,695 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 09:32:48,714 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/config.json "HTTP/1.1 200 OK"
+2026-05-26 09:32:48,990 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/modeling_piguard.py "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 09:32:49,301 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/modeling_piguard.py "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 09:32:49,303 [WARNING] huggingface_hub.utils._http: Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+2026-05-26 09:32:49,453 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/modeling_piguard.py "HTTP/1.1 200 OK"
+2026-05-26 09:32:50,160 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/modeling_piguard.py "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 09:32:50,400 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/modeling_piguard.py "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 09:32:50,428 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/modeling_piguard.py "HTTP/1.1 200 OK"
+2026-05-26 09:32:52,397 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 09:32:52,643 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 09:32:52,661 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/config.json "HTTP/1.1 200 OK"
+2026-05-26 09:32:52,906 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/modeling_piguard.py "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 09:32:53,141 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/modeling_piguard.py "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 09:32:53,156 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/modeling_piguard.py "HTTP/1.1 200 OK"
+2026-05-26 09:32:53,396 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 09:32:53,642 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 09:32:53,658 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/config.json "HTTP/1.1 200 OK"
+2026-05-26 09:32:53,897 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 09:32:54,136 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 09:32:54,155 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-26 09:32:54,498 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/leolee99/InjecGuard/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 09:32:54,909 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/leolee99/PIGuard/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-05-26 09:32:55,316 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/leolee99/InjecGuard/tree/main?recursive=true&expand=false "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 09:32:55,726 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/leolee99/PIGuard/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-05-26 09:32:57,569 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/leolee99/InjecGuard "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 09:32:57,877 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/leolee99/PIGuard "HTTP/1.1 200 OK"
+2026-05-26 09:32:57,882 [INFO] sqwakvox.guardrails: Mozilla any-guardrail successfully initialized with INJECGUARD.
+2026-05-26 09:33:19,776 [INFO] sqwakvox.agent: Starting any-agent execution — model: gemini:gemini-1.5-flash
+2026-05-26 09:33:22,983 [INFO] google_genai.models: AFC is enabled with max remote calls: 10.
+2026-05-26 09:33:23,970 [INFO] httpx: HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent "HTTP/1.1 404 Not Found"
+2026-05-26 09:34:42,190 [ERROR] asyncio: Task exception was never retrieved
+future: <Task finished name='Task-7649' exception=RuntimeError('Event loop is closed')>
+Traceback (most recent call last):
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/google/genai/_api_client.py", line 2179, in aclose
+    await self._async_httpx_client.aclose()  # type: ignore[union-attr]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/httpx/_client.py", line 1985, in aclose
+    await self._transport.aclose()
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/httpx/_transports/default.py", line 406, in aclose
+    await self._pool.aclose()
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/httpcore/_async/connection_pool.py", line 353, in aclose
+    await self._close_connections(closing_connections)
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/httpcore/_async/connection_pool.py", line 345, in _close_connections
+    await connection.aclose()
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/httpcore/_async/connection.py", line 173, in aclose
+    await self._connection.aclose()
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/httpcore/_async/http11.py", line 258, in aclose
+    await self._network_stream.aclose()
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/httpcore/_backends/anyio.py", line 53, in aclose
+    await self._stream.aclose()
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/anyio/streams/tls.py", line 236, in aclose
+    await self.transport_stream.aclose()
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/anyio/_backends/_asyncio.py", line 1344, in aclose
+    self._transport.close()
+  File "/usr/lib/python3.12/asyncio/selector_events.py", line 1211, in close
+    super().close()
+  File "/usr/lib/python3.12/asyncio/selector_events.py", line 875, in close
+    self._loop.call_soon(self._call_connection_lost, None)
+  File "/usr/lib/python3.12/asyncio/base_events.py", line 795, in call_soon
+    self._check_closed()
+  File "/usr/lib/python3.12/asyncio/base_events.py", line 541, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+2026-05-26 09:34:50,694 [INFO] sqwakvox.agent: Starting any-agent execution — model: gemini:gemini-2.5-pro
+2026-05-26 09:34:50,765 [INFO] google_genai.models: AFC is enabled with max remote calls: 10.
+2026-05-26 09:34:51,424 [INFO] httpx: HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent "HTTP/1.1 429 Too Many Requests"
+2026-05-26 09:36:25,713 [ERROR] asyncio: Task exception was never retrieved
+future: <Task finished name='Task-8758' exception=RuntimeError('Event loop is closed')>
+Traceback (most recent call last):
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/google/genai/_api_client.py", line 2179, in aclose
+    await self._async_httpx_client.aclose()  # type: ignore[union-attr]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/httpx/_client.py", line 1985, in aclose
+    await self._transport.aclose()
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/httpx/_transports/default.py", line 406, in aclose
+    await self._pool.aclose()
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/httpcore/_async/connection_pool.py", line 353, in aclose
+    await self._close_connections(closing_connections)
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/httpcore/_async/connection_pool.py", line 345, in _close_connections
+    await connection.aclose()
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/httpcore/_async/connection.py", line 173, in aclose
+    await self._connection.aclose()
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/httpcore/_async/http11.py", line 258, in aclose
+    await self._network_stream.aclose()
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/httpcore/_backends/anyio.py", line 53, in aclose
+    await self._stream.aclose()
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/anyio/streams/tls.py", line 236, in aclose
+    await self.transport_stream.aclose()
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/anyio/_backends/_asyncio.py", line 1344, in aclose
+    self._transport.close()
+  File "/usr/lib/python3.12/asyncio/selector_events.py", line 1211, in close
+    super().close()
+  File "/usr/lib/python3.12/asyncio/selector_events.py", line 875, in close
+    self._loop.call_soon(self._call_connection_lost, None)
+  File "/usr/lib/python3.12/asyncio/base_events.py", line 795, in call_soon
+    self._check_closed()
+  File "/usr/lib/python3.12/asyncio/base_events.py", line 541, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+2026-05-26 09:41:36,306 [INFO] root: Sqwakvox application starting...
+2026-05-26 09:41:53,923 [INFO] sqwakvox.app: Initiated parsing for document source: /data3/app2/sqwakvox/samples/fs023-sample-financial-statements.pdf
+2026-05-26 09:41:53,929 [INFO] sqwakvox.app: Running Docling layout converter on /data3/app2/sqwakvox/samples/fs023-sample-financial-statements.pdf...
+2026-05-26 09:41:53,958 [INFO] docling.datamodel.document: detected formats: [<InputFormat.PDF: 'pdf'>]
+2026-05-26 09:41:54,132 [INFO] docling.document_converter: Going to convert document batch...
+2026-05-26 09:41:54,133 [INFO] docling.document_converter: Initializing pipeline for StandardPdfPipeline with options hash 80a8a1322ca5ef46817c7adbf875fff6
+2026-05-26 09:41:54,181 [INFO] docling.models.factories.base_factory: Loading plugin 'docling_defaults'
+2026-05-26 09:41:54,184 [INFO] docling.models.factories: Registered picture descriptions: ['picture_description_vlm_engine', 'vlm', 'api']
+2026-05-26 09:41:54,197 [INFO] docling.models.factories.base_factory: Loading plugin 'docling_defaults'
+2026-05-26 09:41:54,211 [INFO] docling.models.factories: Registered ocr engines: ['auto', 'easyocr', 'kserve_v2_ocr', 'ocrmac', 'rapidocr', 'tesserocr', 'tesseract']
+2026-05-26 09:41:54,273 [INFO] docling.models.stages.ocr.auto_ocr_model: rapidocr cannot be used because onnxruntime is not installed.
+2026-05-26 09:41:54,273 [INFO] docling.models.stages.ocr.auto_ocr_model: easyocr cannot be used because it is not installed.
+2026-05-26 09:41:54,631 [INFO] docling.utils.accelerator_utils: Accelerator device: 'cpu'
+2026-05-26 09:41:55,769 [INFO] docling.models.stages.ocr.auto_ocr_model: Auto OCR model selected rapidocr with torch.
+2026-05-26 09:41:55,779 [INFO] docling.models.factories.base_factory: Loading plugin 'docling_defaults'
+2026-05-26 09:41:55,781 [INFO] docling.models.factories: Registered layout engines: ['layout_object_detection', 'docling_layout_default', 'docling_experimental_table_crops_layout']
+2026-05-26 09:41:55,798 [INFO] docling.utils.accelerator_utils: Accelerator device: 'cpu'
+2026-05-26 09:41:56,343 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/docling-project/docling-layout-heron/revision/main "HTTP/1.1 200 OK"
+2026-05-26 09:41:57,177 [INFO] docling.models.factories.base_factory: Loading plugin 'docling_defaults'
+2026-05-26 09:41:57,180 [INFO] docling.models.factories: Registered table structure engines: ['docling_tableformer', 'docling_tableformer_v2', 'granite_vision_table']
+2026-05-26 09:41:57,454 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/docling-project/docling-models/revision/v2.3.0 "HTTP/1.1 200 OK"
+2026-05-26 09:41:57,479 [INFO] docling.utils.accelerator_utils: Accelerator device: 'cpu'
+2026-05-26 09:41:58,039 [INFO] docling.pipeline.base_pipeline: Processing document fs023-sample-financial-statements.pdf
+2026-05-26 09:44:02,193 [INFO] docling.document_converter: Finished converting document fs023-sample-financial-statements.pdf in 128.25 sec.
+2026-05-26 09:44:02,193 [INFO] sqwakvox.app: Docling layout conversion complete. Processing tables...
+2026-05-26 09:44:02,280 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 09:44:02,283 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 09:44:02,285 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 09:44:02,288 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 09:44:02,290 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 09:44:02,291 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 09:44:02,294 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 09:44:02,344 [INFO] sqwakvox.app: Successfully loaded and parsed structured document: fs023-sample-financial-statements.pdf with 9267 characters.
+2026-05-26 09:52:27,429 [INFO] root: Sqwakvox application starting...
+2026-05-26 09:52:45,536 [INFO] sqwakvox.app: Initiated parsing for document source: /data3/app2/sqwakvox/samples/fs023-sample-financial-statements.pdf
+2026-05-26 09:52:45,541 [INFO] sqwakvox.app: Running Docling layout converter on /data3/app2/sqwakvox/samples/fs023-sample-financial-statements.pdf...
+2026-05-26 09:52:45,566 [INFO] docling.datamodel.document: detected formats: [<InputFormat.PDF: 'pdf'>]
+2026-05-26 09:52:45,726 [INFO] docling.document_converter: Going to convert document batch...
+2026-05-26 09:52:45,732 [INFO] docling.document_converter: Initializing pipeline for StandardPdfPipeline with options hash 80a8a1322ca5ef46817c7adbf875fff6
+2026-05-26 09:52:45,805 [INFO] docling.models.factories.base_factory: Loading plugin 'docling_defaults'
+2026-05-26 09:52:45,810 [INFO] docling.models.factories: Registered picture descriptions: ['picture_description_vlm_engine', 'vlm', 'api']
+2026-05-26 09:52:45,829 [INFO] docling.models.factories.base_factory: Loading plugin 'docling_defaults'
+2026-05-26 09:52:45,863 [INFO] docling.models.factories: Registered ocr engines: ['auto', 'easyocr', 'kserve_v2_ocr', 'ocrmac', 'rapidocr', 'tesserocr', 'tesseract']
+2026-05-26 09:52:45,928 [INFO] docling.models.stages.ocr.auto_ocr_model: rapidocr cannot be used because onnxruntime is not installed.
+2026-05-26 09:52:45,928 [INFO] docling.models.stages.ocr.auto_ocr_model: easyocr cannot be used because it is not installed.
+2026-05-26 09:52:46,267 [INFO] docling.utils.accelerator_utils: Accelerator device: 'cpu'
+2026-05-26 09:52:48,369 [INFO] docling.models.stages.ocr.auto_ocr_model: Auto OCR model selected rapidocr with torch.
+2026-05-26 09:52:48,380 [INFO] docling.models.factories.base_factory: Loading plugin 'docling_defaults'
+2026-05-26 09:52:48,383 [INFO] docling.models.factories: Registered layout engines: ['layout_object_detection', 'docling_layout_default', 'docling_experimental_table_crops_layout']
+2026-05-26 09:52:48,396 [INFO] docling.utils.accelerator_utils: Accelerator device: 'cpu'
+2026-05-26 09:52:49,017 [ERROR] sqwakvox.app: Docling parsing failed: Server disconnected without sending a response.
+2026-05-26 09:53:18,536 [INFO] sqwakvox.app: Initiated parsing for document source: /data3/app2/sqwakvox/samples/fs023-sample-financial-statements.pdf
+2026-05-26 09:53:18,542 [INFO] sqwakvox.app: Running Docling layout converter on /data3/app2/sqwakvox/samples/fs023-sample-financial-statements.pdf...
+2026-05-26 09:53:18,587 [INFO] docling.datamodel.document: detected formats: [<InputFormat.PDF: 'pdf'>]
+2026-05-26 09:53:18,725 [INFO] docling.document_converter: Going to convert document batch...
+2026-05-26 09:53:18,726 [INFO] docling.document_converter: Initializing pipeline for StandardPdfPipeline with options hash 80a8a1322ca5ef46817c7adbf875fff6
+2026-05-26 09:53:18,730 [INFO] docling.models.stages.ocr.auto_ocr_model: rapidocr cannot be used because onnxruntime is not installed.
+2026-05-26 09:53:18,730 [INFO] docling.models.stages.ocr.auto_ocr_model: easyocr cannot be used because it is not installed.
+2026-05-26 09:53:18,737 [INFO] docling.utils.accelerator_utils: Accelerator device: 'cpu'
+2026-05-26 09:53:20,075 [INFO] docling.models.stages.ocr.auto_ocr_model: Auto OCR model selected rapidocr with torch.
+2026-05-26 09:53:20,075 [INFO] docling.utils.accelerator_utils: Accelerator device: 'cpu'
+2026-05-26 09:53:20,374 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/docling-project/docling-layout-heron/revision/main "HTTP/1.1 200 OK"
+2026-05-26 09:53:21,373 [INFO] docling.models.factories.base_factory: Loading plugin 'docling_defaults'
+2026-05-26 09:53:21,377 [INFO] docling.models.factories: Registered table structure engines: ['docling_tableformer', 'docling_tableformer_v2', 'granite_vision_table']
+2026-05-26 09:53:21,824 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/docling-project/docling-models/revision/v2.3.0 "HTTP/1.1 200 OK"
+2026-05-26 09:53:21,854 [INFO] docling.utils.accelerator_utils: Accelerator device: 'cpu'
+2026-05-26 10:04:49,715 [INFO] docling.pipeline.base_pipeline: Processing document fs023-sample-financial-statements.pdf
+2026-05-26 10:33:46,479 [INFO] docling.document_converter: Finished converting document fs023-sample-financial-statements.pdf in 2427.93 sec.
+2026-05-26 10:33:46,485 [INFO] sqwakvox.app: Docling layout conversion complete. Processing tables...
+2026-05-26 10:33:46,566 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 10:33:46,582 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 10:33:46,583 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 10:33:46,586 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 10:33:46,586 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 10:33:46,587 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 10:33:46,589 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 10:33:46,638 [INFO] sqwakvox.app: Successfully loaded and parsed structured document: fs023-sample-financial-statements.pdf with 9267 characters.
+2026-05-26 10:36:48,230 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 10:36:48,529 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 10:36:48,530 [WARNING] huggingface_hub.utils._http: Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+2026-05-26 10:36:48,545 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/config.json "HTTP/1.1 200 OK"
+2026-05-26 10:36:50,776 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/modeling_piguard.py "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 10:36:51,183 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/modeling_piguard.py "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 10:36:51,201 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/modeling_piguard.py "HTTP/1.1 200 OK"
+2026-05-26 10:36:51,900 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/modeling_piguard.py "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 10:36:52,209 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/modeling_piguard.py "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 10:36:52,229 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/modeling_piguard.py "HTTP/1.1 200 OK"
+2026-05-26 10:36:53,437 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 10:36:53,705 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 10:36:53,723 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/config.json "HTTP/1.1 200 OK"
+2026-05-26 10:36:54,261 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/modeling_piguard.py "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 10:36:54,563 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/modeling_piguard.py "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 10:36:54,583 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/modeling_piguard.py "HTTP/1.1 200 OK"
+2026-05-26 10:36:54,839 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 10:36:55,180 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 10:36:55,197 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/config.json "HTTP/1.1 200 OK"
+2026-05-26 10:36:55,587 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 10:36:55,894 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 10:36:55,915 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-26 10:36:58,767 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/leolee99/InjecGuard/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 10:36:59,067 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/leolee99/PIGuard/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-05-26 10:36:59,517 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/leolee99/InjecGuard/tree/main?recursive=true&expand=false "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 10:36:59,987 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/leolee99/PIGuard/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-05-26 10:37:13,202 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/leolee99/InjecGuard "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 10:37:13,494 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/leolee99/PIGuard "HTTP/1.1 200 OK"
+2026-05-26 10:37:13,496 [INFO] sqwakvox.guardrails: Mozilla any-guardrail successfully initialized with INJECGUARD.
+2026-05-26 10:37:19,313 [INFO] sqwakvox.agent: Starting any-agent execution — model: gemini:gemini-2.5-pro
+2026-05-26 10:37:21,687 [INFO] google_genai.models: AFC is enabled with max remote calls: 10.
+2026-05-26 10:37:22,244 [INFO] httpx: HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent "HTTP/1.1 429 Too Many Requests"
+2026-05-26 10:38:30,337 [ERROR] asyncio: Task exception was never retrieved
+future: <Task finished name='Task-5384' exception=RuntimeError('Event loop is closed')>
+Traceback (most recent call last):
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/google/genai/_api_client.py", line 2179, in aclose
+    await self._async_httpx_client.aclose()  # type: ignore[union-attr]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/httpx/_client.py", line 1985, in aclose
+    await self._transport.aclose()
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/httpx/_transports/default.py", line 406, in aclose
+    await self._pool.aclose()
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/httpcore/_async/connection_pool.py", line 353, in aclose
+    await self._close_connections(closing_connections)
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/httpcore/_async/connection_pool.py", line 345, in _close_connections
+    await connection.aclose()
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/httpcore/_async/connection.py", line 173, in aclose
+    await self._connection.aclose()
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/httpcore/_async/http11.py", line 258, in aclose
+    await self._network_stream.aclose()
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/httpcore/_backends/anyio.py", line 53, in aclose
+    await self._stream.aclose()
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/anyio/streams/tls.py", line 236, in aclose
+    await self.transport_stream.aclose()
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/anyio/_backends/_asyncio.py", line 1344, in aclose
+    self._transport.close()
+  File "/usr/lib/python3.12/asyncio/selector_events.py", line 1211, in close
+    super().close()
+  File "/usr/lib/python3.12/asyncio/selector_events.py", line 875, in close
+    self._loop.call_soon(self._call_connection_lost, None)
+  File "/usr/lib/python3.12/asyncio/base_events.py", line 795, in call_soon
+    self._check_closed()
+  File "/usr/lib/python3.12/asyncio/base_events.py", line 541, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+2026-05-26 10:41:04,476 [INFO] sqwakvox.agent: Starting any-agent execution — model: gemini:gemini-2.5-pro
+2026-05-26 10:41:04,540 [INFO] google_genai.models: AFC is enabled with max remote calls: 10.
+2026-05-26 10:41:05,001 [INFO] httpx: HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent "HTTP/1.1 429 Too Many Requests"
+2026-05-26 10:41:05,033 [ERROR] asyncio: Task exception was never retrieved
+future: <Task finished name='Task-9457' exception=RuntimeError('Event loop is closed')>
+Traceback (most recent call last):
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/google/genai/_api_client.py", line 2179, in aclose
+    await self._async_httpx_client.aclose()  # type: ignore[union-attr]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/httpx/_client.py", line 1985, in aclose
+    await self._transport.aclose()
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/httpx/_transports/default.py", line 406, in aclose
+    await self._pool.aclose()
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/httpcore/_async/connection_pool.py", line 353, in aclose
+    await self._close_connections(closing_connections)
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/httpcore/_async/connection_pool.py", line 345, in _close_connections
+    await connection.aclose()
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/httpcore/_async/connection.py", line 173, in aclose
+    await self._connection.aclose()
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/httpcore/_async/http11.py", line 258, in aclose
+    await self._network_stream.aclose()
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/httpcore/_backends/anyio.py", line 53, in aclose
+    await self._stream.aclose()
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/anyio/streams/tls.py", line 236, in aclose
+    await self.transport_stream.aclose()
+  File "/data3/app2/sqwakvox/.venv/lib/python3.12/site-packages/anyio/_backends/_asyncio.py", line 1344, in aclose
+    self._transport.close()
+  File "/usr/lib/python3.12/asyncio/selector_events.py", line 1211, in close
+    super().close()
+  File "/usr/lib/python3.12/asyncio/selector_events.py", line 875, in close
+    self._loop.call_soon(self._call_connection_lost, None)
+  File "/usr/lib/python3.12/asyncio/base_events.py", line 795, in call_soon
+    self._check_closed()
+  File "/usr/lib/python3.12/asyncio/base_events.py", line 541, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+2026-05-26 10:53:19,282 [INFO] root: Sqwakvox application starting...
+2026-05-26 10:53:59,014 [INFO] sqwakvox.app: Initiated parsing for document source: /data3/app2/sqwakvox/samples/fs023-sample-financial-statements.pdf
+2026-05-26 10:53:59,020 [INFO] sqwakvox.app: Running Docling layout converter on /data3/app2/sqwakvox/samples/fs023-sample-financial-statements.pdf...
+2026-05-26 10:53:59,049 [INFO] docling.datamodel.document: detected formats: [<InputFormat.PDF: 'pdf'>]
+2026-05-26 10:53:59,435 [INFO] docling.document_converter: Going to convert document batch...
+2026-05-26 10:53:59,441 [INFO] docling.document_converter: Initializing pipeline for StandardPdfPipeline with options hash 80a8a1322ca5ef46817c7adbf875fff6
+2026-05-26 10:53:59,544 [INFO] docling.models.factories.base_factory: Loading plugin 'docling_defaults'
+2026-05-26 10:53:59,553 [INFO] docling.models.factories: Registered picture descriptions: ['picture_description_vlm_engine', 'vlm', 'api']
+2026-05-26 10:53:59,595 [INFO] docling.models.factories.base_factory: Loading plugin 'docling_defaults'
+2026-05-26 10:53:59,617 [INFO] docling.models.factories: Registered ocr engines: ['auto', 'easyocr', 'kserve_v2_ocr', 'ocrmac', 'rapidocr', 'tesserocr', 'tesseract']
+2026-05-26 10:53:59,730 [INFO] docling.models.stages.ocr.auto_ocr_model: rapidocr cannot be used because onnxruntime is not installed.
+2026-05-26 10:53:59,730 [INFO] docling.models.stages.ocr.auto_ocr_model: easyocr cannot be used because it is not installed.
+2026-05-26 10:54:00,560 [INFO] docling.utils.accelerator_utils: Accelerator device: 'cpu'
+2026-05-26 10:54:03,161 [INFO] docling.models.stages.ocr.auto_ocr_model: Auto OCR model selected rapidocr with torch.
+2026-05-26 10:54:03,172 [INFO] docling.models.factories.base_factory: Loading plugin 'docling_defaults'
+2026-05-26 10:54:03,177 [INFO] docling.models.factories: Registered layout engines: ['layout_object_detection', 'docling_layout_default', 'docling_experimental_table_crops_layout']
+2026-05-26 10:54:03,194 [INFO] docling.utils.accelerator_utils: Accelerator device: 'cpu'
+2026-05-26 10:54:03,611 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/docling-project/docling-layout-heron/revision/main "HTTP/1.1 200 OK"
+2026-05-26 10:54:04,436 [INFO] docling.models.factories.base_factory: Loading plugin 'docling_defaults'
+2026-05-26 10:54:04,460 [INFO] docling.models.factories: Registered table structure engines: ['docling_tableformer', 'docling_tableformer_v2', 'granite_vision_table']
+2026-05-26 10:54:04,718 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/docling-project/docling-models/revision/v2.3.0 "HTTP/1.1 200 OK"
+2026-05-26 10:54:04,753 [INFO] docling.utils.accelerator_utils: Accelerator device: 'cpu'
+2026-05-26 10:54:13,979 [INFO] docling.pipeline.base_pipeline: Processing document fs023-sample-financial-statements.pdf
+2026-05-26 10:57:01,973 [INFO] docling.document_converter: Finished converting document fs023-sample-financial-statements.pdf in 182.94 sec.
+2026-05-26 10:57:01,979 [INFO] sqwakvox.app: Docling layout conversion complete. Processing tables...
+2026-05-26 10:57:02,080 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 10:57:02,087 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 10:57:02,093 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 10:57:02,095 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 10:57:02,096 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 10:57:02,097 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 10:57:02,098 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 10:57:02,119 [INFO] sqwakvox.app: Successfully loaded and parsed structured document: fs023-sample-financial-statements.pdf with 9267 characters.
+2026-05-26 10:59:01,598 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 10:59:02,005 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 10:59:02,006 [WARNING] huggingface_hub.utils._http: Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+2026-05-26 10:59:02,025 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/config.json "HTTP/1.1 200 OK"
+2026-05-26 10:59:02,328 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/modeling_piguard.py "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 10:59:02,720 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/modeling_piguard.py "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 10:59:02,739 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/modeling_piguard.py "HTTP/1.1 200 OK"
+2026-05-26 10:59:03,129 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/modeling_piguard.py "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 10:59:03,442 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/modeling_piguard.py "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 10:59:03,846 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/modeling_piguard.py "HTTP/1.1 200 OK"
+2026-05-26 10:59:04,261 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 10:59:04,563 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 10:59:04,870 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/config.json "HTTP/1.1 200 OK"
+2026-05-26 10:59:05,111 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/modeling_piguard.py "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 10:59:05,370 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/modeling_piguard.py "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 10:59:05,531 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/modeling_piguard.py "HTTP/1.1 200 OK"
+2026-05-26 10:59:05,869 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 10:59:06,231 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 10:59:06,250 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/config.json "HTTP/1.1 200 OK"
+2026-05-26 10:59:06,492 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 10:59:06,770 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 10:59:06,790 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-26 10:59:07,073 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/leolee99/InjecGuard/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 10:59:07,373 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/leolee99/PIGuard/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-05-26 10:59:07,673 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/leolee99/InjecGuard/tree/main?recursive=true&expand=false "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 10:59:07,993 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/leolee99/PIGuard/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-05-26 10:59:09,379 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/leolee99/InjecGuard "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 10:59:09,620 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/leolee99/PIGuard "HTTP/1.1 200 OK"
+2026-05-26 10:59:09,622 [INFO] sqwakvox.guardrails: Mozilla any-guardrail successfully initialized with INJECGUARD.
+2026-05-26 10:59:11,510 [INFO] sqwakvox.agent: Starting any-agent execution — model: gemini:gemini-2.5-flash
+2026-05-26 10:59:13,039 [INFO] google_genai.models: AFC is enabled with max remote calls: 10.
+2026-05-26 10:59:32,221 [INFO] httpx: HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent "HTTP/1.1 200 OK"
+2026-05-26 10:59:32,374 [INFO] sqwakvox.agent: Agent execution complete — response length: 4396 chars
