@@ -1327,3 +1327,69 @@ RuntimeError: Event loop is closed
 2026-05-26 10:59:13,039 [INFO] google_genai.models: AFC is enabled with max remote calls: 10.
 2026-05-26 10:59:32,221 [INFO] httpx: HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent "HTTP/1.1 200 OK"
 2026-05-26 10:59:32,374 [INFO] sqwakvox.agent: Agent execution complete — response length: 4396 chars
+2026-05-26 11:16:43,915 [INFO] root: Sqwakvox application starting...
+2026-05-26 11:20:04,493 [INFO] sqwakvox.app: Initiated parsing for document source: /data3/app2/sqwakvox/samples/fs023-sample-financial-statements.pdf
+2026-05-26 11:20:04,500 [INFO] sqwakvox.app: Running Docling layout converter on /data3/app2/sqwakvox/samples/fs023-sample-financial-statements.pdf...
+2026-05-26 11:20:04,502 [INFO] docling.datamodel.document: detected formats: [<InputFormat.PDF: 'pdf'>]
+2026-05-26 11:20:04,557 [INFO] docling.document_converter: Going to convert document batch...
+2026-05-26 11:20:04,563 [INFO] docling.document_converter: Initializing pipeline for StandardPdfPipeline with options hash 80a8a1322ca5ef46817c7adbf875fff6
+2026-05-26 11:20:04,679 [INFO] docling.models.factories.base_factory: Loading plugin 'docling_defaults'
+2026-05-26 11:20:04,683 [INFO] docling.models.factories: Registered picture descriptions: ['picture_description_vlm_engine', 'vlm', 'api']
+2026-05-26 11:20:04,734 [INFO] docling.models.factories.base_factory: Loading plugin 'docling_defaults'
+2026-05-26 11:20:04,755 [INFO] docling.models.factories: Registered ocr engines: ['auto', 'easyocr', 'kserve_v2_ocr', 'ocrmac', 'rapidocr', 'tesserocr', 'tesseract']
+2026-05-26 11:20:04,826 [INFO] docling.models.stages.ocr.auto_ocr_model: rapidocr cannot be used because onnxruntime is not installed.
+2026-05-26 11:20:04,826 [INFO] docling.models.stages.ocr.auto_ocr_model: easyocr cannot be used because it is not installed.
+2026-05-26 11:20:05,170 [INFO] docling.utils.accelerator_utils: Accelerator device: 'cpu'
+2026-05-26 11:20:06,253 [INFO] docling.models.stages.ocr.auto_ocr_model: Auto OCR model selected rapidocr with torch.
+2026-05-26 11:20:06,262 [INFO] docling.models.factories.base_factory: Loading plugin 'docling_defaults'
+2026-05-26 11:20:06,264 [INFO] docling.models.factories: Registered layout engines: ['layout_object_detection', 'docling_layout_default', 'docling_experimental_table_crops_layout']
+2026-05-26 11:20:06,281 [INFO] docling.utils.accelerator_utils: Accelerator device: 'cpu'
+2026-05-26 11:20:06,767 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/docling-project/docling-layout-heron/revision/main "HTTP/1.1 200 OK"
+2026-05-26 11:20:07,821 [INFO] docling.models.factories.base_factory: Loading plugin 'docling_defaults'
+2026-05-26 11:20:07,823 [INFO] docling.models.factories: Registered table structure engines: ['docling_tableformer', 'docling_tableformer_v2', 'granite_vision_table']
+2026-05-26 11:20:08,063 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/docling-project/docling-models/revision/v2.3.0 "HTTP/1.1 200 OK"
+2026-05-26 11:20:08,081 [INFO] docling.utils.accelerator_utils: Accelerator device: 'cpu'
+2026-05-26 11:20:08,661 [INFO] docling.pipeline.base_pipeline: Processing document fs023-sample-financial-statements.pdf
+2026-05-26 11:22:11,133 [INFO] docling.document_converter: Finished converting document fs023-sample-financial-statements.pdf in 126.63 sec.
+2026-05-26 11:22:11,134 [INFO] sqwakvox.app: Docling layout conversion complete. Processing tables...
+2026-05-26 11:22:11,232 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 11:22:11,237 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 11:22:11,238 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 11:22:11,243 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 11:22:11,245 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 11:22:11,247 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 11:22:11,251 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-26 11:22:11,297 [INFO] sqwakvox.app: Successfully loaded and parsed structured document: fs023-sample-financial-statements.pdf with 9267 characters.
+2026-05-26 11:24:41,953 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 11:24:42,253 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 11:24:42,272 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/config.json "HTTP/1.1 200 OK"
+2026-05-26 11:24:42,553 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/modeling_piguard.py "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 11:24:43,023 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/modeling_piguard.py "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 11:24:43,038 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/modeling_piguard.py "HTTP/1.1 200 OK"
+2026-05-26 11:24:43,638 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/modeling_piguard.py "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 11:24:43,878 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/modeling_piguard.py "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 11:24:43,896 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/modeling_piguard.py "HTTP/1.1 200 OK"
+2026-05-26 11:24:44,315 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 11:24:44,569 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 11:24:44,570 [WARNING] huggingface_hub.utils._http: Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+2026-05-26 11:24:44,876 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/config.json "HTTP/1.1 200 OK"
+2026-05-26 11:24:45,388 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/modeling_piguard.py "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 11:24:45,793 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/modeling_piguard.py "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 11:24:45,808 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/modeling_piguard.py "HTTP/1.1 200 OK"
+2026-05-26 11:24:46,100 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 11:24:46,510 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 11:24:46,527 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/config.json "HTTP/1.1 200 OK"
+2026-05-26 11:24:46,818 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 11:24:47,225 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 11:24:47,244 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-26 11:24:47,742 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/leolee99/InjecGuard/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 11:24:48,148 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/leolee99/PIGuard/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-05-26 11:24:48,455 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/leolee99/InjecGuard/tree/main?recursive=true&expand=false "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 11:24:48,762 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/leolee99/PIGuard/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-05-26 11:24:49,790 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/leolee99/InjecGuard "HTTP/1.1 307 Temporary Redirect"
+2026-05-26 11:24:50,195 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/leolee99/PIGuard "HTTP/1.1 200 OK"
+2026-05-26 11:24:50,197 [INFO] sqwakvox.guardrails: Mozilla any-guardrail successfully initialized with INJECGUARD.
+2026-05-26 11:24:52,271 [INFO] sqwakvox.agent: Starting any-agent execution — model: gemini:gemini-2.5-flash
+2026-05-26 11:24:53,562 [INFO] google_genai.models: AFC is enabled with max remote calls: 10.
+2026-05-26 11:25:13,751 [INFO] httpx: HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent "HTTP/1.1 200 OK"
+2026-05-26 11:25:13,815 [INFO] sqwakvox.agent: Agent execution complete — response length: 5270 chars

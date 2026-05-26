@@ -31,3 +31,8 @@
 2026-05-26 10:59:00,801 [INFO] sqwakvox.chat: Agent invoked — model: gemini:gemini-2.5-flash
 2026-05-26 10:59:00,805 [INFO] sqwakvox.chat: Guardrail check — model: gemini:gemini-2.5-flash
 2026-05-26 10:59:33,288 [INFO] sqwakvox.chat: Agent response (4396 chars)
+2026-05-26 11:22:11,296 [INFO] sqwakvox.chat: Document loaded: fs023-sample-financial-statements.pdf (9267 chars)
+2026-05-26 11:24:41,389 [INFO] sqwakvox.chat: User query: can I have the percentage change in the statement of cash flows? thank you
+2026-05-26 11:24:41,392 [INFO] sqwakvox.chat: Agent invoked — model: gemini:gemini-2.5-flash
+2026-05-26 11:24:41,401 [INFO] sqwakvox.chat: Guardrail check — model: gemini:gemini-2.5-flash
+2026-05-26 11:25:15,589 [INFO] sqwakvox.chat: Agent response (5270 chars)

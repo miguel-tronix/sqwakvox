@@ -83,7 +83,7 @@ CSS = """
 Screen {
     layout: grid;
     grid-size: 3;
-    grid-columns: 1fr 3fr 1fr;
+    grid-columns: 1fr 2.6fr 1.4fr;
     grid-rows: 1fr;
 }
 
@@ -144,10 +144,11 @@ Screen {
 
 #chat-input-row {
     height: auto;
+    overflow-x: auto;
 }
 
 #chat-input {
-    height: 5;
+    height: 3;
 }
 
 #status-bar {
