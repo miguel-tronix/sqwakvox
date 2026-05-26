@@ -43,6 +43,7 @@ def main() -> None:
     _setup_chat_logging()
     logging.info("Sqwakvox application starting...")
     from sqwakvox.controller import AppController
+
     controller = AppController()
     app = SqwakvoxApp(controller=controller)
     app.run()

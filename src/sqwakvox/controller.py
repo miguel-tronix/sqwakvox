@@ -1,9 +1,9 @@
 import json
 import logging
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Optional
 
 from docling.document_converter import DocumentConverter
 
@@ -42,11 +42,11 @@ def extract_message(error_string: str) -> str:
             continue
 
     # Fall back to the last line (often the most human-readable part)
-    lines = [l.strip() for l in error_string.splitlines() if l.strip()]
+    lines = [line.strip() for line in error_string.splitlines() if line.strip()]
     return lines[-1] if lines else error_string
 
 
-def _walk_for_message(obj):
+def _walk_for_message(obj: object) -> str | None:
     if isinstance(obj, dict):
         if "message" in obj and isinstance(obj["message"], str):
             return obj["message"]
@@ -64,20 +64,22 @@ class AgentResult:
     blocked_reason: str = ""
     pii_redacted_query: bool = False
     pii_redacted_response: bool = False
-    math_discrepancies: list[str] = None
+    math_discrepancies: list[str] | None = None
     success: bool = True
     error_message: str = ""
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if self.math_discrepancies is None:
             self.math_discrepancies = []
 
 
 class AppController:
-    def __init__(self, converter: Optional[DocumentConverter] = None):
+    def __init__(self, converter: DocumentConverter | None = None):
         self.converter = converter or DocumentConverter()
 
-    def convert_document(self, source: str, is_cancelled: Callable[[], bool]) -> Optional[StructuredDocument]:
+    def convert_document(
+        self, source: str, is_cancelled: Callable[[], bool]
+    ) -> StructuredDocument | None:
         logger.info(f"Running Docling layout converter on {source}...")
         result = self.converter.convert(source)
         if is_cancelled():
@@ -143,14 +145,15 @@ class AppController:
                     )
                 )
 
-        structured = StructuredDocument(
+        return StructuredDocument(
             file_name=doc_name,
             raw_markdown=doc_md,
             tables=tables,
         )
-        return structured
 
-    def build_financial_data_store(self, structured_doc: Optional[StructuredDocument]) -> dict[str, float]:
+    def build_financial_data_store(
+        self, structured_doc: StructuredDocument | None
+    ) -> dict[str, float]:
         data_store: dict[str, float] = {}
         if not structured_doc:
             return data_store
@@ -170,8 +173,10 @@ class AppController:
                             continue
         return data_store
 
-    def cross_validate(self, structured_doc: Optional[StructuredDocument]) -> list[tuple[str, float, float, bool]]:
-        results = []
+    def cross_validate(
+        self, structured_doc: StructuredDocument | None
+    ) -> list[tuple[str, float, float, bool]]:
+        results: list[tuple[str, float, float, bool]] = []
         if not structured_doc or not structured_doc.tables:
             return results
 
@@ -189,7 +194,11 @@ class AppController:
                     expected = values[-1]
                     actual = values[:-1]
                     is_valid = FinancialRuleEngine.verify_column_sum(actual, expected)
-                    col_name = table.headers[col_idx] if col_idx < len(table.headers) else f"Column {col_idx}"
+                    col_name = (
+                        table.headers[col_idx]
+                        if col_idx < len(table.headers)
+                        else f"Column {col_idx}"
+                    )
                     results.append((col_name, expected, sum(actual), is_valid))
         return results
 
@@ -200,7 +209,7 @@ class AppController:
         user_query: str,
         doc_context: str,
         active_document_name: str,
-        data_store: dict[str, float]
+        data_store: dict[str, float],
     ) -> AgentResult:
         result = AgentResult()
 

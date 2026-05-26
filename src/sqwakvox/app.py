@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-import json
 import logging
-import re
 from pathlib import Path
 from typing import ClassVar
 
-from docling.document_converter import DocumentConverter
 from rich.markup import escape
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -28,10 +25,10 @@ from textual.widgets import (
 )
 from textual.worker import get_current_worker
 
+from sqwakvox.controller import AppController, extract_message
 from sqwakvox.guardrails import AuditLogger
 from sqwakvox.models import ModelProvider, StructuredDocument
 from sqwakvox.renderer import DocumentRenderPane
-from sqwakvox.controller import AppController, extract_message
 
 logger = logging.getLogger(__name__)
 chat_logger = logging.getLogger("sqwakvox.chat")
@@ -363,8 +360,7 @@ class SqwakvoxApp(App[None]):
                 )
             else:
                 chat_log.write(
-                    f"  [red]✗[/red] Column '{col_name}' expected {expected} "
-                    f"but got {actual:.2f}"
+                    f"  [red]✗[/red] Column '{col_name}' expected {expected} but got {actual:.2f}"
                 )
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -453,7 +449,9 @@ class SqwakvoxApp(App[None]):
         self.is_parsing = False
         self.active_error = error_message
         chat_log = self.query_one("#chat-log", RichLog)
-        chat_log.write(f"[bold red]✗ Parsing failed:[/bold red] {escape(extract_message(error_message))}")
+        chat_log.write(
+            f"[bold red]✗ Parsing failed:[/bold red] {escape(extract_message(error_message))}"
+        )
 
         logger.error(f"Docling parsing failed: {error_message}")
 
@@ -518,7 +516,7 @@ class SqwakvoxApp(App[None]):
             user_query=user_query,
             doc_context=self.doc_context,
             active_document_name=self.active_document_name,
-            data_store=data_store
+            data_store=data_store,
         )
 
         if result.is_blocked:
