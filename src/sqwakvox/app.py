@@ -28,56 +28,13 @@ from textual.widgets import (
 )
 from textual.worker import get_current_worker
 
-from sqwakvox.guardrails import (
-    AnyGuardrailValidator,
-    AuditLogger,
-    FinancialRuleEngine,
-    PIIRedactor,
-)
-from sqwakvox.models import ModelProvider, StructuredDocument, TableData
+from sqwakvox.guardrails import AuditLogger
+from sqwakvox.models import ModelProvider, StructuredDocument
 from sqwakvox.renderer import DocumentRenderPane
+from sqwakvox.controller import AppController, extract_message
 
 logger = logging.getLogger(__name__)
 chat_logger = logging.getLogger("sqwakvox.chat")
-
-
-def _extract_message(error_string: str) -> str:
-    if not error_string:
-        return error_string
-
-    # Try parsing the entire string as JSON
-    try:
-        obj = json.loads(error_string)
-        msg = _walk_for_message(obj)
-        if msg:
-            return msg
-    except json.JSONDecodeError:
-        pass
-
-    # Try finding a JSON object embedded in the string (e.g. "... {'error': {'message': '...'}}")
-    for m in re.finditer(r"\{.*\}", error_string, re.DOTALL):
-        try:
-            obj = json.loads(m.group())
-            msg = _walk_for_message(obj)
-            if msg:
-                return msg
-        except (json.JSONDecodeError, ValueError):
-            continue
-
-    # Fall back to the last line (often the most human-readable part)
-    lines = [l.strip() for l in error_string.splitlines() if l.strip()]
-    return lines[-1] if lines else error_string
-
-
-def _walk_for_message(obj):
-    if isinstance(obj, dict):
-        if "message" in obj and isinstance(obj["message"], str):
-            return obj["message"]
-        for v in obj.values():
-            result = _walk_for_message(v)
-            if result:
-                return result
-    return None
 
 CSS = """
 Screen {
@@ -256,11 +213,11 @@ class SqwakvoxApp(App[None]):
     active_document_name = reactive("")
     active_error: reactive[str | None] = reactive(None)
 
-    def __init__(self) -> None:
+    def __init__(self, controller=None) -> None:
         super().__init__()
+        self.controller = controller or AppController()
         self.doc_context: str = ""
         self.structured_doc: StructuredDocument | None = None
-        self.converter = DocumentConverter()
         self.ingestion_history: list[str] = []
 
     def compose(self) -> ComposeResult:
@@ -346,7 +303,7 @@ class SqwakvoxApp(App[None]):
     def watch_active_error(self, error: str | None) -> None:
         error_pane = self.query_one("#error-banner", Label)
         if error:
-            escaped_error = escape(_extract_message(error))
+            escaped_error = escape(extract_message(error))
             error_pane.update(f"[bold white on red]Error: {escaped_error}[/]")
             error_pane.styles.visibility = "visible"
         else:
@@ -397,29 +354,18 @@ class SqwakvoxApp(App[None]):
         chat_log = self.query_one("#chat-log", RichLog)
         chat_log.write("\n[bold underline]Numerical Cross-Validation[/bold underline]")
 
-        for table in self.structured_doc.tables:
-            for col_idx in range(len(table.headers)):
-                values: list[float] = []
-                for row in table.rows:
-                    if col_idx < len(row):
-                        cleaned = row[col_idx].replace("$", "").replace(",", "").replace("%", "")
-                        try:
-                            values.append(float(cleaned))
-                        except ValueError:
-                            break
-                if values and len(values) >= 3:
-                    expected = values[-1]
-                    actual = values[:-1]
-                    if FinancialRuleEngine.verify_column_sum(actual, expected):
-                        chat_log.write(
-                            f"  [green]✓[/green] Column '{table.headers[col_idx]}' "
-                            f"sums to {expected} (actual: {sum(actual):.2f})"
-                        )
-                    else:
-                        chat_log.write(
-                            f"  [red]✗[/red] Column '{table.headers[col_idx]}' expected {expected} "
-                            f"but got {sum(actual):.2f}"
-                        )
+        results = self.controller.cross_validate(self.structured_doc)
+        for col_name, expected, actual, is_valid in results:
+            if is_valid:
+                chat_log.write(
+                    f"  [green]✓[/green] Column '{col_name}' "
+                    f"sums to {expected} (actual: {actual:.2f})"
+                )
+            else:
+                chat_log.write(
+                    f"  [red]✗[/red] Column '{col_name}' expected {expected} "
+                    f"but got {actual:.2f}"
+                )
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn-browse":
@@ -460,78 +406,9 @@ class SqwakvoxApp(App[None]):
     def _convert_document_in_background(self, source: str) -> None:
         worker = get_current_worker()
         try:
-            logger.info(f"Running Docling layout converter on {source}...")
-            result = self.converter.convert(source)
-            if worker.is_cancelled:
-                logger.info("Docling parsing worker was cancelled.")
-                return
-            logger.info("Docling layout conversion complete. Processing tables...")
-
-            doc_md = result.document.export_to_markdown()
-            doc_name = Path(source).name if "/" in source or "\\" in source else source
-
-            tables: list[TableData] = []
-            if hasattr(result.document, "tables") and result.document.tables:
-                for tbl in result.document.tables:
-                    headers = []
-                    rows = []
-                    if hasattr(tbl, "export_to_dataframe"):
-                        try:
-                            df = tbl.export_to_dataframe()
-                            headers = [str(col) for col in df.columns]
-                            rows = [[str(val) for val in r] for r in df.values.tolist()]
-                        except Exception:
-                            pass
-
-                    if not headers and not rows:
-                        headers = (
-                            [cell.text for cell in tbl.header_row]
-                            if hasattr(tbl, "header_row") and tbl.header_row
-                            else []
-                        )
-                        if hasattr(tbl, "rows") and tbl.rows:
-                            rows = [[cell.text for cell in row] for row in tbl.rows]
-
-                    caption = None
-                    caption_text_attr = getattr(tbl, "caption_text", None)
-                    if caption_text_attr and isinstance(caption_text_attr, str):
-                        caption = caption_text_attr
-                    else:
-                        caption_attr = getattr(tbl, "caption", None)
-                        if caption_attr:
-                            if callable(caption_attr):
-                                try:
-                                    res = caption_attr()
-                                    if isinstance(res, str):
-                                        caption = res
-                                except Exception:
-                                    pass
-                            elif isinstance(caption_attr, str):
-                                caption = caption_attr
-
-                    if not caption and hasattr(tbl, "captions") and tbl.captions:
-                        caption = " ".join(getattr(c, "text", "") for c in tbl.captions)
-
-                    if caption is not None:
-                        caption = str(caption).strip()
-                        if not caption:
-                            caption = None
-
-                    tables.append(
-                        TableData(
-                            headers=headers,
-                            rows=rows,
-                            title=caption,
-                        )
-                    )
-
-            structured = StructuredDocument(
-                file_name=doc_name,
-                raw_markdown=doc_md,
-                tables=tables,
-            )
-
-            self.call_from_thread(self._on_parse_success, structured, source)
+            structured = self.controller.convert_document(source, lambda: worker.is_cancelled)
+            if structured:
+                self.call_from_thread(self._on_parse_success, structured, source)
         except Exception as e:
             if not worker.is_cancelled:
                 self.call_from_thread(self._on_parse_failure, str(e))
@@ -576,7 +453,7 @@ class SqwakvoxApp(App[None]):
         self.is_parsing = False
         self.active_error = error_message
         chat_log = self.query_one("#chat-log", RichLog)
-        chat_log.write(f"[bold red]✗ Parsing failed:[/bold red] {escape(_extract_message(error_message))}")
+        chat_log.write(f"[bold red]✗ Parsing failed:[/bold red] {escape(extract_message(error_message))}")
 
         logger.error(f"Docling parsing failed: {error_message}")
 
@@ -587,29 +464,7 @@ class SqwakvoxApp(App[None]):
             risk_score=1.0,
         )
 
-    def _build_financial_data_store(self) -> dict[str, float]:
-        """Extracts label -> numeric value mappings from all parsed document tables.
-
-        This serves as the ground-truth database for math-guardrail validations.
-        """
-        data_store: dict[str, float] = {}
-        if not self.structured_doc:
-            return data_store
-        for table in self.structured_doc.tables:
-            for row in table.rows:
-                if len(row) >= 2:
-                    label = row[0].strip()
-                    for cell in row[1:]:
-                        cleaned = cell.replace("$", "").replace(",", "").replace("%", "").strip()
-                        try:
-                            val = float(cleaned)
-                            if "%" in cell:
-                                val /= 100.0
-                            if label and len(label) > 1:
-                                data_store[label] = val
-                        except ValueError:
-                            continue
-        return data_store
+    # _build_financial_data_store moved to AppController
 
     def _handle_chat(self) -> None:
         chat_input = self.query_one("#chat-input", Input)
@@ -656,66 +511,36 @@ class SqwakvoxApp(App[None]):
     def _execute_agent_background(self, model_id: str, api_key: str, user_query: str) -> None:
         chat_log = self.query_one("#chat-log", RichLog)
 
-        # 1. Mozilla any-guardrail Input Prompt Verification
-        chat_logger.info("Guardrail check — model: %s", model_id)
-        is_query_safe = AnyGuardrailValidator.validate_prompt(user_query)
-        if not is_query_safe:
-            chat_logger.warning("Guardrail BLOCKED query: %s", user_query)
-            self.call_from_thread(
-                self._on_agent_blocked, "Mozilla any-guardrail prompt safety violation"
-            )
-            return
-
-        # 2. Local PII Redaction
-        redacted_query = PIIRedactor.redact_text(user_query)
-        if redacted_query != user_query:
-            chat_log.write("[italic dim]PII detected and redacted from query.[/italic dim]")
-
-        AuditLogger.log(
-            document_id=self.active_document_name or "unknown",
-            operation="user_query",
-            guardrail_checks={
-                "any_guardrail_safe": True,
-                "pii_redacted": redacted_query != user_query,
-            },
-            action="ALLOWED",
-            input_text=user_query,
+        data_store = self.controller.build_financial_data_store(self.structured_doc)
+        result = self.controller.execute_agent(
+            model_id=model_id,
+            api_key=api_key,
+            user_query=user_query,
+            doc_context=self.doc_context,
+            active_document_name=self.active_document_name,
+            data_store=data_store
         )
 
-        env_var = ModelProvider.get_env_var(model_id)
+        if result.is_blocked:
+            self.call_from_thread(self._on_agent_blocked, result.blocked_reason)
+            return
 
-        try:
-            from sqwakvox.agent import AnyAgentOrchestrator
+        if result.pii_redacted_query:
+            chat_log.write("[italic dim]PII detected and redacted from query.[/italic dim]")
 
-            agent_response = AnyAgentOrchestrator.execute_query(
-                model_id=model_id,
-                api_key=api_key,
-                context=self.doc_context,
-                prompt=redacted_query,
-                env_var=env_var,
+        if not result.success:
+            self.call_from_thread(self._on_agent_failure, result.error_message)
+            return
+
+        if result.math_discrepancies:
+            chat_log.write(
+                "[bold yellow]System: Numerical discrepancies detected between "
+                "agent assertions and parsed tables![/bold yellow]"
             )
+            for discrepancy in result.math_discrepancies:
+                chat_log.write(f"  [yellow]⚠[/yellow] {discrepancy}")
 
-            # 3. Output PII Redaction
-            agent_redacted = PIIRedactor.redact_text(agent_response)
-
-            # 4. Math Guardrail Validation
-            data_store = self._build_financial_data_store()
-            verification = FinancialRuleEngine.cross_check_text_assertions(
-                agent_redacted, data_store
-            )
-
-            if not verification.passed:
-                chat_log.write(
-                    "[bold yellow]System: Numerical discrepancies detected between "
-                    "agent assertions and parsed tables![/bold yellow]"
-                )
-                for discrepancy in verification.discrepancies:
-                    chat_log.write(f"  [yellow]⚠[/yellow] {discrepancy}")
-
-            self.call_from_thread(self._on_agent_success, agent_redacted, user_query)
-
-        except Exception as e:
-            self.call_from_thread(self._on_agent_failure, str(e))
+        self.call_from_thread(self._on_agent_success, result.response, user_query)
 
     def _on_agent_success(self, response: str, query: str) -> None:
         chat_log = self.query_one("#chat-log", RichLog)
@@ -733,7 +558,7 @@ class SqwakvoxApp(App[None]):
         chat_log = self.query_one("#chat-log", RichLog)
         chat_log.write(
             f"[bold red]✗ Input Blocked:[/bold red] "
-            f"Prompt blocked by guardrail system: {escape(_extract_message(reason))}"
+            f"Prompt blocked by guardrail system: {escape(extract_message(reason))}"
         )
         chat_logger.warning("Agent BLOCKED: %s", reason)
         AuditLogger.log(
@@ -744,7 +569,7 @@ class SqwakvoxApp(App[None]):
         )
 
     def _on_agent_failure(self, error_message: str) -> None:
-        display_message = _extract_message(error_message)
+        display_message = extract_message(error_message)
         chat_log = self.query_one("#chat-log", RichLog)
         chat_log.write(f"[bold red]✗ Agent execution failed:[/bold red] {escape(display_message)}")
         chat_logger.error("Agent FAILURE: %s", error_message)
