@@ -4,10 +4,10 @@ build-backend = "hatchling.build"
 
 [project]
 name = "sqwakvox"
-version = "0.1.0"
+version = "0.1.1"
 description = "Local AI Financial Document Assistant with Textual TUI, Docling Ingestion, and Mozilla any-guardrail Validation"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 license = { text = "MIT" }
 authors = [
     { name = "Miguel de Sousa", email = "miguel.tronix@gmail.com" }
@@ -24,6 +24,8 @@ dependencies = [
     "any-guardrail>=0.1.0",
     "pydantic>=2.6.0",
     "jinja2>=3.1.0",
+    "any-agent[langchain]>=1.18.0",
+    "google-genai>=2.6.0",
 ]
 
 [dependency-groups]

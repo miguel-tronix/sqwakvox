@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from typing import List, Optional
-
 from textual.app import ComposeResult
+from textual.containers import VerticalScroll
 from textual.widgets import Static
 
 from sqwakvox.models import StructuredDocument, TableData
@@ -10,9 +9,7 @@ from sqwakvox.models import StructuredDocument, TableData
 
 class TerminalChartPlotter:
     @staticmethod
-    def render_horizontal_bars(
-        labels: list[str], values: list[float], max_width: int = 40
-    ) -> str:
+    def render_horizontal_bars(labels: list[str], values: list[float], max_width: int = 40) -> str:
         if not values:
             return ""
         max_val = max(values)
@@ -20,7 +17,7 @@ class TerminalChartPlotter:
             return "\n".join(f"{label:<15} |" for label in labels)
 
         lines: list[str] = []
-        for label, val in zip(labels, values):
+        for label, val in zip(labels, values, strict=True):
             bar_len = int((val / max_val) * max_width)
             bar = "█" * bar_len + "░" * (max_width - bar_len)
             lines.append(f"{label:<15} {bar} {val:>8.2f}")
@@ -45,7 +42,7 @@ class TerminalChartPlotter:
 
 class UnicodeTableFormatter:
     @staticmethod
-    def _detect_alignment(rows: List[List[str]], col_idx: int) -> str:
+    def _detect_alignment(rows: list[list[str]], col_idx: int) -> str:
         numeric_count = 0
         for row in rows:
             cell = row[col_idx].strip()
@@ -69,13 +66,10 @@ class UnicodeTableFormatter:
             return ""
 
         padded_headers = [h or "" for h in headers] + [""] * (num_cols - len(headers))
-        padded_rows = [
-            [r[i] if i < len(r) else "" for i in range(num_cols)] for r in rows
-        ]
+        padded_rows = [[r[i] if i < len(r) else "" for i in range(num_cols)] for r in rows]
 
         alignments = [
-            UnicodeTableFormatter._detect_alignment(padded_rows, i)
-            for i in range(num_cols)
+            UnicodeTableFormatter._detect_alignment(padded_rows, i) for i in range(num_cols)
         ]
 
         col_widths: list[int] = []
@@ -91,17 +85,13 @@ class UnicodeTableFormatter:
         sep_b = "╧"
 
         top = "╔" + sep_h.join(sep_h * w for w in col_widths) + "╗"
-        header_sep = (
-            "╠" + sep_t.join(sep_h * w for w in col_widths) + "╣"
-            if header_border
-            else ""
-        )
+        header_sep = "╠" + sep_t.join(sep_h * w for w in col_widths) + "╣" if header_border else ""
         body_sep = "╟" + sep_m.join("─" * w for w in col_widths) + "╢"
         bottom = "╚" + sep_b.join(sep_h * w for w in col_widths) + "╝"
 
         def _format_row(cells: list[str], alignments: list[str]) -> str:
             parts: list[str] = []
-            for cell, w, align in zip(cells, col_widths, alignments):
+            for cell, w, _align in zip(cells, col_widths, alignments, strict=True):
                 text = cell.center(w)
                 parts.append(text)
             return sep_v + sep_v.join(parts) + sep_v
@@ -122,8 +112,14 @@ class UnicodeTableFormatter:
         return "\n".join(lines)
 
 
-class DocumentRenderPane(Static):
+class DocumentRenderPane(VerticalScroll):
+    can_focus = True
+
+    def compose(self) -> ComposeResult:
+        yield Static(id="render-pane-content")
+
     def update_document(self, doc: StructuredDocument) -> None:
+        content_pane = self.query_one("#render-pane-content", Static)
         content: list[str] = []
         content.append(f"[bold]{doc.file_name}[/bold]\n")
 
@@ -137,12 +133,11 @@ class DocumentRenderPane(Static):
 
             numeric_values = self._extract_numeric_column(table)
             if numeric_values:
-                labels = [row[0] for row in table.rows if row]
                 spark = TerminalChartPlotter.render_sparkline(numeric_values)
                 if spark:
                     content.append(f"\nTrend: {spark}")
 
-        self.update("\n".join(content))
+        content_pane.update("\n".join(content))
 
     @staticmethod
     def _extract_numeric_column(table: TableData) -> list[float]:
@@ -163,4 +158,4 @@ class DocumentRenderPane(Static):
         return []
 
     def clear_document(self) -> None:
-        self.update("")
+        self.query_one("#render-pane-content", Static).update("")
