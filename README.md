@@ -1,5 +1,12 @@
 # Sqwakvox — Local AI Financial Document Assistant
 
+███████╗ ██████╗ ██╗    ██╗ █████╗ ██╗  ██╗██╗   ██╗ ██████╗ ██╗  ██╗
+██╔════╝██╔═══██╗██║    ██║██╔══██╗██║ ██╔╝██║   ██║██╔═══██╗╚██╗██╔╝
+███████╗██║   ██║██║ █╗ ██║███████║█████╔╝ ██║   ██║██║   ██║ ╚███╔╝ 
+╚════██║██║▄▄ ██║██║███╗██║██╔══██║██╔═██╗ ╚██╗ ██╔╝██║   ██║ ██╔██╗ 
+███████║╚██████╔╝╚███╔███╔╝██║  ██║██║  ██╗ ╚████╔╝ ╚██████╔╝██╔╝ ██╗
+╚══════╝ ╚══▀▀═╝  ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝  ╚═══╝   ╚═════╝ ╚═╝  ╚═╝
+
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue)](https://python.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -89,6 +96,21 @@ API keys are entered at runtime in the TUI sidebar (never stored). Supported env
 2. **PII Redaction** — SSNs, credit cards, IBANs, and emails are automatically redacted from both queries and agent responses
 3. **Numerical Cross-Validation** — The `FinancialRuleEngine` parses labelled figures from document tables and cross-checks LLM responses for arithmetic consistency
 4. **Audit Logging** — All operations (ingest, query, response) are timestamped and written to an append-only JSONL audit log
+
+## Build
+
+To build the application:
+
+```bash
+uv sync
+uv build
+```
+
+## Run
+
+```bash
+uv run sqwakvox
+```
 
 ## Development
 
