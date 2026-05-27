@@ -22,6 +22,8 @@ from textual.widgets import (
     LoadingIndicator,
     RichLog,
     Select,
+    Tab,
+    Tabs,
 )
 from textual.worker import get_current_worker
 
@@ -74,11 +76,23 @@ Screen {
     margin-top: 1;
 }
 
+#center-column {
+    layout: vertical;
+}
+
+#document-tabs {
+    min-height: 3;
+    height: 3;
+    background: $panel;
+    border-bottom: solid $secondary;
+}
+
 #render-pane {
     border: solid $secondary;
     padding: 1;
     background: $surface;
     overflow-y: auto;
+    height: 1fr;
 }
 
 #render-pane:focus {
@@ -210,12 +224,14 @@ class SqwakvoxApp(App[None]):
     active_document_name = reactive("")
     active_error: reactive[str | None] = reactive(None)
 
-    def __init__(self, controller=None) -> None:
+    def __init__(self, controller: AppController | None = None) -> None:
         super().__init__()
         self.controller = controller or AppController()
         self.doc_context: str = ""
         self.structured_doc: StructuredDocument | None = None
         self.ingestion_history: list[str] = []
+        self.loaded_documents: dict[str, StructuredDocument] = {}
+        self.chat_histories: dict[str, list[str]] = {}
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -250,7 +266,9 @@ class SqwakvoxApp(App[None]):
             yield Label("[bold]Ingest History[/bold]", id="history-label")
             yield ListView(id="ingest-history")
 
-        yield DocumentRenderPane(id="render-pane")
+        with Vertical(id="center-column"):
+            yield Tabs(id="document-tabs")
+            yield DocumentRenderPane(id="render-pane")
 
         with Vertical(id="chat-column"):
             yield RichLog(id="chat-log", highlight=True, markup=True, wrap=True)
@@ -315,8 +333,24 @@ class SqwakvoxApp(App[None]):
     def action_clear_chat(self) -> None:
         chat_log = self.query_one("#chat-log", RichLog)
         chat_log.clear()
-        chat_log.write("[italic]Chat cleared.[/italic]")
+        if self.active_document_name:
+            self.chat_histories[self.active_document_name] = []
+        self.write_chat_message("[italic]Chat cleared.[/italic]", persist=True)
         chat_logger.info("Chat log cleared by user")
+
+    def write_chat_message(self, markup: str, persist: bool = True) -> None:
+        def _write() -> None:
+            chat_log = self.query_one("#chat-log", RichLog)
+            chat_log.write(markup)
+            if persist and self.active_document_name:
+                if self.active_document_name not in self.chat_histories:
+                    self.chat_histories[self.active_document_name] = []
+                self.chat_histories[self.active_document_name].append(markup)
+
+        try:
+            self.call_from_thread(_write)
+        except RuntimeError:
+            _write()
 
     def action_scroll_up(self) -> None:
         focused = self.focused
@@ -344,23 +378,30 @@ class SqwakvoxApp(App[None]):
 
     def action_cross_validate(self) -> None:
         if not self.structured_doc or not self.structured_doc.tables:
-            chat_log = self.query_one("#chat-log", RichLog)
-            chat_log.write("[bold yellow]No document loaded to cross-validate.[/bold yellow]")
+            self.write_chat_message(
+                "[bold yellow]No document loaded to cross-validate.[/bold yellow]",
+                persist=True,
+            )
             return
 
-        chat_log = self.query_one("#chat-log", RichLog)
-        chat_log.write("\n[bold underline]Numerical Cross-Validation[/bold underline]")
+        self.write_chat_message(
+            "\n[bold underline]Numerical Cross-Validation[/bold underline]",
+            persist=True,
+        )
 
         results = self.controller.cross_validate(self.structured_doc)
         for col_name, expected, actual, is_valid in results:
             if is_valid:
-                chat_log.write(
+                self.write_chat_message(
                     f"  [green]✓[/green] Column '{col_name}' "
-                    f"sums to {expected} (actual: {actual:.2f})"
+                    f"sums to {expected} (actual: {actual:.2f})",
+                    persist=True,
                 )
             else:
-                chat_log.write(
-                    f"  [red]✗[/red] Column '{col_name}' expected {expected} but got {actual:.2f}"
+                self.write_chat_message(
+                    f"  [red]✗[/red] Column '{col_name}' "
+                    f"expected {expected} but got {actual:.2f}",
+                    persist=True,
                 )
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -386,10 +427,14 @@ class SqwakvoxApp(App[None]):
         self.is_parsing = True
         self.active_error = None
 
-        chat_log = self.query_one("#chat-log", RichLog)
-        chat_log.write(f"\n[italic dim]Starting layout ingestion for: {source}...[/italic dim]")
-        chat_log.write(
-            "[italic dim]Initializing Docling Parser (this may take a few seconds)...[/italic dim]"
+        self.write_chat_message(
+            f"\n[italic dim]Starting layout ingestion for: {source}...[/italic dim]",
+            persist=False,
+        )
+        self.write_chat_message(
+            "[italic dim]Initializing Docling Parser "
+            "(this may take a few seconds)...[/italic dim]",
+            persist=False,
         )
         logger.info(f"Initiated parsing for document source: {source}")
 
@@ -410,47 +455,26 @@ class SqwakvoxApp(App[None]):
                 self.call_from_thread(self._on_parse_failure, str(e))
 
     def _on_parse_success(self, structured: StructuredDocument, source: str) -> None:
-        self.structured_doc = structured
-        self.doc_context = structured.raw_markdown
-        self.active_document_name = structured.file_name
         self.is_parsing = False
+        self.loaded_documents[source] = structured
+        if structured.file_name not in self.chat_histories:
+            self.chat_histories[structured.file_name] = []
 
         if source not in self.ingestion_history:
             self.ingestion_history.append(source)
             history_list = self.query_one("#ingest-history", ListView)
             history_list.append(ListItem(Label(f"• {structured.file_name} (Ready)")))
 
-        render_pane = self.query_one("#render-pane", DocumentRenderPane)
-        render_pane.update_document(structured)
-
-        chat_log = self.query_one("#chat-log", RichLog)
-        char_count = len(structured.raw_markdown)
-        chat_log.write(
-            f"[bold green]✓ Document loaded successfully.[/bold green] "
-            f"Character count: {char_count}"
-        )
-        chat_logger.info("Document loaded: %s (%d chars)", structured.file_name, char_count)
-
-        logger.info(
-            f"Successfully loaded and parsed structured document: "
-            f"{structured.file_name} with {char_count} characters."
-        )
-
-        AuditLogger.log(
-            document_id=structured.file_name,
-            operation="document_ingested",
-            action="SUCCESS",
-        )
-
-        self.query_one("#chat-input", Input).focus()
-        self._update_ui_state()
+        self._rebuild_tabs()
+        self._switch_to_document(structured, source="ingest")
 
     def _on_parse_failure(self, error_message: str) -> None:
         self.is_parsing = False
         self.active_error = error_message
-        chat_log = self.query_one("#chat-log", RichLog)
-        chat_log.write(
-            f"[bold red]✗ Parsing failed:[/bold red] {escape(extract_message(error_message))}"
+        self.write_chat_message(
+            f"[bold red]✗ Parsing failed:[/bold red] "
+            f"{escape(extract_message(error_message))}",
+            persist=False,
         )
 
         logger.error(f"Docling parsing failed: {error_message}")
@@ -470,35 +494,40 @@ class SqwakvoxApp(App[None]):
         if not user_query:
             return
 
-        chat_log = self.query_one("#chat-log", RichLog)
         chat_logger.info("User query: %s", user_query)
-        chat_log.write(f"\n[bold blue]You:[/bold blue] {user_query}")
+        self.write_chat_message(f"\n[bold blue]You:[/bold blue] {user_query}", persist=True)
         chat_input.value = ""
 
         selected_model = self.query_one("#model-selector", Select).value
         if selected_model is None or not isinstance(selected_model, str):
-            chat_log.write(
-                "[bold yellow]System: Please select a valid model configuration.[/bold yellow]"
+            self.write_chat_message(
+                "[bold yellow]System: Please select a valid model configuration.[/bold yellow]",
+                persist=True,
             )
             return
 
         api_key = self.query_one("#api-key-input", Input).value.strip()
 
         if not api_key:
-            chat_log.write(
+            self.write_chat_message(
                 "[bold yellow]System: Warning! API Key is missing. "
-                "Please provide a valid key in the sidebar.[/bold yellow]"
+                "Please provide a valid key in the sidebar.[/bold yellow]",
+                persist=True,
             )
             return
 
         if len(api_key) < 10:
-            chat_log.write(
-                "[bold red]System: Invalid API Key. The provided key is too short.[/bold red]"
+            self.write_chat_message(
+                "[bold red]System: Invalid API Key. The provided key is too short.[/bold red]",
+                persist=True,
             )
             return
 
         chat_logger.info("Agent invoked — model: %s", selected_model)
-        chat_log.write("[italic dim]Agent is thinking (via LangChain)...[/italic dim]")
+        self.write_chat_message(
+            "[italic dim]Agent is thinking (via LangChain)...[/italic dim]",
+            persist=False,
+        )
 
         self.run_worker(
             lambda: self._execute_agent_background(selected_model, api_key, user_query),
@@ -507,8 +536,6 @@ class SqwakvoxApp(App[None]):
         )
 
     def _execute_agent_background(self, model_id: str, api_key: str, user_query: str) -> None:
-        chat_log = self.query_one("#chat-log", RichLog)
-
         data_store = self.controller.build_financial_data_store(self.structured_doc)
         result = self.controller.execute_agent(
             model_id=model_id,
@@ -524,25 +551,28 @@ class SqwakvoxApp(App[None]):
             return
 
         if result.pii_redacted_query:
-            chat_log.write("[italic dim]PII detected and redacted from query.[/italic dim]")
+            self.write_chat_message(
+                "[italic dim]PII detected and redacted from query.[/italic dim]",
+                persist=True,
+            )
 
         if not result.success:
             self.call_from_thread(self._on_agent_failure, result.error_message)
             return
 
         if result.math_discrepancies:
-            chat_log.write(
+            self.write_chat_message(
                 "[bold yellow]System: Numerical discrepancies detected between "
-                "agent assertions and parsed tables![/bold yellow]"
+                "agent assertions and parsed tables![/bold yellow]",
+                persist=True,
             )
             for discrepancy in result.math_discrepancies:
-                chat_log.write(f"  [yellow]⚠[/yellow] {discrepancy}")
+                self.write_chat_message(f"  [yellow]⚠[/yellow] {discrepancy}", persist=True)
 
         self.call_from_thread(self._on_agent_success, result.response, user_query)
 
     def _on_agent_success(self, response: str, query: str) -> None:
-        chat_log = self.query_one("#chat-log", RichLog)
-        chat_log.write(f"[bold green]Agent:[/bold green] {response}")
+        self.write_chat_message(f"[bold green]Agent:[/bold green] {response}", persist=True)
         chat_logger.info("Agent response (%d chars)", len(response))
 
         AuditLogger.log(
@@ -553,10 +583,10 @@ class SqwakvoxApp(App[None]):
         )
 
     def _on_agent_blocked(self, reason: str) -> None:
-        chat_log = self.query_one("#chat-log", RichLog)
-        chat_log.write(
+        self.write_chat_message(
             f"[bold red]✗ Input Blocked:[/bold red] "
-            f"Prompt blocked by guardrail system: {escape(extract_message(reason))}"
+            f"Prompt blocked by guardrail system: {escape(extract_message(reason))}",
+            persist=True,
         )
         chat_logger.warning("Agent BLOCKED: %s", reason)
         AuditLogger.log(
@@ -567,9 +597,11 @@ class SqwakvoxApp(App[None]):
         )
 
     def _on_agent_failure(self, error_message: str) -> None:
-        display_message = extract_message(error_message)
-        chat_log = self.query_one("#chat-log", RichLog)
-        chat_log.write(f"[bold red]✗ Agent execution failed:[/bold red] {escape(display_message)}")
+        display_message = escape(extract_message(error_message))
+        self.write_chat_message(
+            f"[bold red]✗ Agent execution failed:[/bold red] {display_message}",
+            persist=True,
+        )
         chat_logger.error("Agent FAILURE: %s", error_message)
         AuditLogger.log(
             document_id=self.active_document_name or "unknown",
@@ -577,3 +609,98 @@ class SqwakvoxApp(App[None]):
             action="FAILURE",
             risk_score=0.5,
         )
+
+    def _rebuild_tabs(self) -> None:
+        tabs = self.query_one("#document-tabs", Tabs)
+        tabs.clear()
+        for idx, source in enumerate(self.ingestion_history):
+            doc = self.loaded_documents.get(source)
+            if doc:
+                tab_id = f"tab_{idx}"
+                tabs.add_tab(Tab(doc.file_name, id=tab_id))
+
+    def _switch_to_document(self, doc: StructuredDocument, source: str) -> None:
+        self.structured_doc = doc
+        self.doc_context = doc.raw_markdown
+        self.active_document_name = doc.file_name
+
+        # Find document source
+        doc_source = ""
+        for src, d in self.loaded_documents.items():
+            if d == doc:
+                doc_source = src
+                break
+
+        if doc_source:
+            self.query_one("#doc-source", Input).value = doc_source
+
+        # Update center rendering pane
+        render_pane = self.query_one("#render-pane", DocumentRenderPane)
+        render_pane.update_document(doc)
+
+        # Sync selection across UI elements
+        if doc_source:
+            try:
+                idx = self.ingestion_history.index(doc_source)
+                if source in ("list", "ingest"):
+                    tabs = self.query_one("#document-tabs", Tabs)
+                    tabs.active = f"tab_{idx}"
+                if source in ("tab", "ingest"):
+                    list_view = self.query_one("#ingest-history", ListView)
+                    list_view.index = idx
+            except ValueError:
+                pass
+
+        # Clear and restore active document's chat log
+        chat_log = self.query_one("#chat-log", RichLog)
+        chat_log.clear()
+        history = self.chat_histories.get(doc.file_name, [])
+        if history:
+            for msg_markup in history:
+                chat_log.write(msg_markup)
+        else:
+            char_count = len(doc.raw_markdown)
+            msg = (
+                f"[bold green]✓ Document loaded successfully.[/bold green] "
+                f"Character count: {char_count}"
+            )
+            chat_log.write(msg)
+            self.chat_histories[doc.file_name] = [msg]
+            chat_logger.info("Document loaded: %s (%d chars)", doc.file_name, char_count)
+            logger.info(
+                f"Successfully loaded and parsed structured document: "
+                f"{doc.file_name} with {char_count} characters."
+            )
+            AuditLogger.log(
+                document_id=doc.file_name,
+                operation="document_ingested",
+                action="SUCCESS",
+            )
+
+        self.query_one("#chat-input", Input).focus()
+        self._update_ui_state()
+
+    def on_tabs_tab_activated(self, event: Tabs.TabActivated) -> None:
+        if not event.tab or not event.tab.id:
+            return
+
+        try:
+            _, idx_str = event.tab.id.split("_", 1)
+            idx = int(idx_str)
+        except (ValueError, AttributeError):
+            return
+
+        if 0 <= idx < len(self.ingestion_history):
+            source = self.ingestion_history[idx]
+            doc = self.loaded_documents.get(source)
+            if doc and doc.file_name != self.active_document_name:
+                self._switch_to_document(doc, source="tab")
+
+    def on_list_view_selected(self, event: ListView.Selected) -> None:
+        if event.list_view.id == "ingest-history" and event.index is not None:
+            idx = event.index
+            if 0 <= idx < len(self.ingestion_history):
+                source = self.ingestion_history[idx]
+                doc = self.loaded_documents.get(source)
+                if doc and doc.file_name != self.active_document_name:
+                    self._switch_to_document(doc, source="list")
