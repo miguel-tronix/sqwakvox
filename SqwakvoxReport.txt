@@ -1,0 +1,61 @@
+███████╗ ██████╗ ██╗    ██╗ █████╗ ██╗  ██╗██╗   ██╗ ██████╗ ██╗  ██╗
+██╔════╝██╔═══██╗██║    ██║██╔══██╗██║ ██╔╝██║   ██║██╔═══██╗╚██╗██╔╝
+███████╗██║   ██║██║ █╗ ██║███████║█████╔╝ ██║   ██║██║   ██║ ╚███╔╝ 
+╚════██║██║▄▄ ██║██║███╗██║██╔══██║██╔═██╗ ╚██╗ ██╔╝██║   ██║ ██╔██╗ 
+███████║╚██████╔╝╚███╔███╔╝██║  ██║██║  ██╗ ╚████╔╝ ╚██████╔╝██╔╝ ██╗
+╚══════╝ ╚══▀▀═╝  ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝  ╚═══╝   ╚═════╝ ╚═╝  ╚═╝
+
+
+Motivation:
+The main motivation behind Sqwakvox is to create a desktop application that can be used to analyse financial documents and provide insights and information to users. The application is built using Python and uses a variety of libraries to achieve its goals. The application is built using a modular architecture that makes it easy to extend and maintain.
+
+
+Project Scope:
+To utilize LLMs as an AI assistant for financial document analysis and data extraction. We provide a TUI (Terminal User Interface) for easy interaction with the AI assistant.
+
+Core Features
+- Document Ingestion: We provide a document ingestion module that can be used to extract text from a variety of document formats. The document ingestion module uses the docling library to extract text from documents.
+- AI Agent: We provide an AI agent harness using Mozilla.ai any-agent framework and Langchain Integration that can be used to analyse financial documents and provide insights and information to users.
+- Document Analysis: We provide a document analysis module that provides a text based view into the extracted document so users interact with the document content directly.
+- Data Extraction: We provide a data extraction module that can be used to extract data from financial documents.
+- Data Quality: We utilize Mozilla AI's any-guardrail to validate the data quality and ensure accuracy, fairness, safesty, and compliance.
+
+Key Libraries:
+- any-agent: For AI agent interaction
+- textual: For TUI implementation
+- docling: For document ingestion and text extraction
+- Mozilla any-guardrail: For validating the AI assistant's responses to ensure accuracy, fairness, safety, and compliance.
+
+Testing:
+- pytest-asyncio: For asyncio-compatible testing
+- types-jinja2: For type hints for Jinja2 templates
+- Ran through some of the scenarios in the dataset and extracted one to samples/bank.txt for validation.
+- Captured screenshots in screenshots/ folder.
+
+Development Strategy:
+We used a modular architecture to integrate any-agent with langchain and document analysis features to create the agent harness.
+We then utilized textual to create a TUI for easy interaction with the AI assistant and document analysis features.
+
+We also utilized Mozilla AI's any-guardrail to validate the data quality and ensure accuracy, fairness, safesty, and compliance.
+
+Error Analysis:
+We enountered several errors during development. The most significant error was related to the integration of any-agent with langchain.
+We have comprehensive logging to sqwakvox.log for debugging purposes and sqwakvoxchat.log for chat history.
+
+Future Improvements:
+- Add support for more document formats
+- Add support for more AI models
+- Add support for more guardrails
+- Add support for more tools
+- Add a web interface for easier access
+- Add support for multiple users
+- Add support for multiple documents
+- Add support for multiple chat sessions
+- Add support for multiple models
+- Prompt Engineering to improve AI assistant's response accuracy, fairness, safesty, and compliance 
+
+Screenshots:
+The screenshots folder contains the screenshots of the application in various usage scenarios.
+ 
+
+ 

@@ -36,3 +36,10 @@
 2026-05-26 11:24:41,392 [INFO] sqwakvox.chat: Agent invoked — model: gemini:gemini-2.5-flash
 2026-05-26 11:24:41,401 [INFO] sqwakvox.chat: Guardrail check — model: gemini:gemini-2.5-flash
 2026-05-26 11:25:15,589 [INFO] sqwakvox.chat: Agent response (5270 chars)
+2026-05-26 15:23:14,326 [INFO] sqwakvox.chat: Document loaded: fs023-sample-financial-statements.pdf (9267 chars)
+2026-05-26 15:24:57,830 [INFO] sqwakvox.chat: User query: please give me the cash flows in a bar chart
+2026-05-26 15:24:57,833 [INFO] sqwakvox.chat: Agent invoked — model: gemini:gemini-2.5-flash
+2026-05-26 15:25:32,879 [INFO] sqwakvox.chat: Agent response (1379 chars)
+2026-05-26 15:28:12,095 [INFO] sqwakvox.chat: User query: can i have the percentage of growth in expenses coming from legal costs in comprehensive income? thank you
+2026-05-26 15:28:12,099 [INFO] sqwakvox.chat: Agent invoked — model: gemini:gemini-2.5-flash
+2026-05-26 15:28:15,471 [INFO] sqwakvox.chat: Agent response (370 chars)
