@@ -43,3 +43,7 @@
 2026-05-26 15:28:12,095 [INFO] sqwakvox.chat: User query: can i have the percentage of growth in expenses coming from legal costs in comprehensive income? thank you
 2026-05-26 15:28:12,099 [INFO] sqwakvox.chat: Agent invoked — model: gemini:gemini-2.5-flash
 2026-05-26 15:28:15,471 [INFO] sqwakvox.chat: Agent response (370 chars)
+2026-05-27 14:05:41,297 [INFO] sqwakvox.chat: Document loaded: fs023-sample-financial-statements.pdf (9267 chars)
+2026-05-27 14:08:19,324 [INFO] sqwakvox.chat: User query: please give me the revenue table with percentage change column, thank you
+2026-05-27 14:08:19,336 [INFO] sqwakvox.chat: Agent invoked — model: gemini:gemini-2.5-flash
+2026-05-27 14:15:59,489 [INFO] sqwakvox.chat: Agent response (731 chars)

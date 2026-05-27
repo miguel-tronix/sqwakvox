@@ -1463,3 +1463,180 @@ RuntimeError: Event loop is closed
 2026-05-26 15:28:12,593 [INFO] google_genai.models: AFC is enabled with max remote calls: 10.
 2026-05-26 15:28:15,407 [INFO] httpx: HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent "HTTP/1.1 200 OK"
 2026-05-26 15:28:15,435 [INFO] sqwakvox.agent: Agent execution complete — response length: 370 chars
+2026-05-27 13:45:11,506 [INFO] root: Sqwakvox application starting...
+2026-05-27 13:48:11,843 [INFO] sqwakvox.app: Initiated parsing for document source: /data3/app2/sqwakvox/samples/fs023-sample-financial-statements.pdf
+2026-05-27 13:48:11,860 [INFO] sqwakvox.controller: Running Docling layout converter on /data3/app2/sqwakvox/samples/fs023-sample-financial-statements.pdf...
+2026-05-27 13:48:11,885 [INFO] docling.datamodel.document: detected formats: [<InputFormat.PDF: 'pdf'>]
+2026-05-27 13:48:12,509 [INFO] docling.document_converter: Going to convert document batch...
+2026-05-27 13:48:12,524 [INFO] docling.document_converter: Initializing pipeline for StandardPdfPipeline with options hash 80a8a1322ca5ef46817c7adbf875fff6
+2026-05-27 13:48:12,672 [INFO] docling.models.factories.base_factory: Loading plugin 'docling_defaults'
+2026-05-27 13:48:12,683 [INFO] docling.models.factories: Registered picture descriptions: ['picture_description_vlm_engine', 'vlm', 'api']
+2026-05-27 13:48:12,711 [INFO] docling.models.factories.base_factory: Loading plugin 'docling_defaults'
+2026-05-27 13:48:12,750 [INFO] docling.models.factories: Registered ocr engines: ['auto', 'easyocr', 'kserve_v2_ocr', 'ocrmac', 'rapidocr', 'tesserocr', 'tesseract']
+2026-05-27 13:48:12,911 [INFO] docling.models.stages.ocr.auto_ocr_model: rapidocr cannot be used because onnxruntime is not installed.
+2026-05-27 13:48:12,911 [INFO] docling.models.stages.ocr.auto_ocr_model: easyocr cannot be used because it is not installed.
+2026-05-27 13:48:15,697 [INFO] docling.utils.accelerator_utils: Accelerator device: 'cpu'
+2026-05-27 13:48:18,694 [INFO] docling.models.stages.ocr.auto_ocr_model: Auto OCR model selected rapidocr with torch.
+2026-05-27 13:48:18,705 [INFO] docling.models.factories.base_factory: Loading plugin 'docling_defaults'
+2026-05-27 13:48:18,724 [INFO] docling.models.factories: Registered layout engines: ['layout_object_detection', 'docling_layout_default', 'docling_experimental_table_crops_layout']
+2026-05-27 13:48:18,744 [INFO] docling.utils.accelerator_utils: Accelerator device: 'cpu'
+2026-05-27 13:48:18,756 [ERROR] sqwakvox.app: Docling parsing failed: [Errno 117] Structure needs cleaning: '/home/migtronix/.cache/huggingface/token'
+2026-05-27 13:52:59,022 [INFO] root: Sqwakvox application starting...
+2026-05-27 13:53:19,569 [INFO] sqwakvox.app: Initiated parsing for document source: /data3/app2/sqwakvox/samples/fs023-sample-financial-statements.pdf
+2026-05-27 13:53:19,574 [INFO] sqwakvox.controller: Running Docling layout converter on /data3/app2/sqwakvox/samples/fs023-sample-financial-statements.pdf...
+2026-05-27 13:53:19,579 [INFO] docling.datamodel.document: detected formats: [<InputFormat.PDF: 'pdf'>]
+2026-05-27 13:53:19,951 [INFO] docling.document_converter: Going to convert document batch...
+2026-05-27 13:53:19,957 [INFO] docling.document_converter: Initializing pipeline for StandardPdfPipeline with options hash 80a8a1322ca5ef46817c7adbf875fff6
+2026-05-27 13:53:20,035 [INFO] docling.models.factories.base_factory: Loading plugin 'docling_defaults'
+2026-05-27 13:53:20,038 [INFO] docling.models.factories: Registered picture descriptions: ['picture_description_vlm_engine', 'vlm', 'api']
+2026-05-27 13:53:20,073 [INFO] docling.models.factories.base_factory: Loading plugin 'docling_defaults'
+2026-05-27 13:53:20,095 [INFO] docling.models.factories: Registered ocr engines: ['auto', 'easyocr', 'kserve_v2_ocr', 'ocrmac', 'rapidocr', 'tesserocr', 'tesseract']
+2026-05-27 13:53:20,161 [INFO] docling.models.stages.ocr.auto_ocr_model: rapidocr cannot be used because onnxruntime is not installed.
+2026-05-27 13:53:20,161 [INFO] docling.models.stages.ocr.auto_ocr_model: easyocr cannot be used because it is not installed.
+2026-05-27 13:53:20,535 [INFO] docling.utils.accelerator_utils: Accelerator device: 'cpu'
+2026-05-27 13:53:21,362 [INFO] docling.models.stages.ocr.auto_ocr_model: Auto OCR model selected rapidocr with torch.
+2026-05-27 13:53:21,372 [INFO] docling.models.factories.base_factory: Loading plugin 'docling_defaults'
+2026-05-27 13:53:21,375 [INFO] docling.models.factories: Registered layout engines: ['layout_object_detection', 'docling_layout_default', 'docling_experimental_table_crops_layout']
+2026-05-27 13:53:21,394 [INFO] docling.utils.accelerator_utils: Accelerator device: 'cpu'
+2026-05-27 13:53:21,762 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/docling-project/docling-layout-heron/revision/main "HTTP/1.1 200 OK"
+2026-05-27 13:53:21,770 [WARNING] huggingface_hub._snapshot_download: Ignored error while writing commit hash to /home/migtronix/.cache/huggingface/hub/models--docling-project--docling-layout-heron/refs/main: [Errno 2] No such file or directory: '/home/migtronix/.cache/huggingface/hub'.
+2026-05-27 13:53:22,008 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/docling-project/docling-layout-heron/resolve/8f39ad3c0b4c58e9c2d2c84a38465abf757272d8/.gitattributes "HTTP/1.1 307 Temporary Redirect"
+2026-05-27 13:53:22,024 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/docling-project/docling-layout-heron/8f39ad3c0b4c58e9c2d2c84a38465abf757272d8/.gitattributes "HTTP/1.1 200 OK"
+2026-05-27 13:53:22,036 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/docling-project/docling-layout-heron/resolve/8f39ad3c0b4c58e9c2d2c84a38465abf757272d8/README.md "HTTP/1.1 307 Temporary Redirect"
+2026-05-27 13:53:22,037 [WARNING] huggingface_hub.utils._http: Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+2026-05-27 13:53:22,040 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/docling-project/docling-layout-heron/resolve/8f39ad3c0b4c58e9c2d2c84a38465abf757272d8/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-27 13:53:22,043 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/docling-project/docling-layout-heron/resolve/8f39ad3c0b4c58e9c2d2c84a38465abf757272d8/model.safetensors "HTTP/1.1 302 Found"
+2026-05-27 13:53:22,046 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/docling-project/docling-layout-heron/resolve/8f39ad3c0b4c58e9c2d2c84a38465abf757272d8/docling_heron_400.png "HTTP/1.1 307 Temporary Redirect"
+2026-05-27 13:53:22,055 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/docling-project/docling-layout-heron/resolve/8f39ad3c0b4c58e9c2d2c84a38465abf757272d8/preprocessor_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-27 13:53:22,057 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/docling-project/docling-layout-heron/8f39ad3c0b4c58e9c2d2c84a38465abf757272d8/README.md "HTTP/1.1 200 OK"
+2026-05-27 13:53:22,060 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/docling-project/docling-layout-heron/8f39ad3c0b4c58e9c2d2c84a38465abf757272d8/config.json "HTTP/1.1 200 OK"
+2026-05-27 13:53:22,062 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/docling-project/docling-layout-heron/8f39ad3c0b4c58e9c2d2c84a38465abf757272d8/docling_heron_400.png "HTTP/1.1 200 OK"
+2026-05-27 13:53:22,078 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/docling-project/docling-layout-heron/8f39ad3c0b4c58e9c2d2c84a38465abf757272d8/preprocessor_config.json "HTTP/1.1 200 OK"
+2026-05-27 13:53:22,088 [ERROR] sqwakvox.app: Docling parsing failed: [Errno 2] No such file or directory: '/home/migtronix/.cache/huggingface/hub'
+2026-05-27 13:56:23,633 [INFO] root: Sqwakvox application starting...
+2026-05-27 13:56:32,924 [INFO] sqwakvox.app: Initiated parsing for document source: /data3/app2/sqwakvox/samples/fs023-sample-financial-statements.pdf
+2026-05-27 13:56:32,930 [INFO] sqwakvox.controller: Running Docling layout converter on /data3/app2/sqwakvox/samples/fs023-sample-financial-statements.pdf...
+2026-05-27 13:56:32,970 [INFO] docling.datamodel.document: detected formats: [<InputFormat.PDF: 'pdf'>]
+2026-05-27 13:56:33,133 [INFO] docling.document_converter: Going to convert document batch...
+2026-05-27 13:56:33,134 [INFO] docling.document_converter: Initializing pipeline for StandardPdfPipeline with options hash 80a8a1322ca5ef46817c7adbf875fff6
+2026-05-27 13:56:33,176 [INFO] docling.models.factories.base_factory: Loading plugin 'docling_defaults'
+2026-05-27 13:56:33,178 [INFO] docling.models.factories: Registered picture descriptions: ['picture_description_vlm_engine', 'vlm', 'api']
+2026-05-27 13:56:33,193 [INFO] docling.models.factories.base_factory: Loading plugin 'docling_defaults'
+2026-05-27 13:56:33,215 [INFO] docling.models.factories: Registered ocr engines: ['auto', 'easyocr', 'kserve_v2_ocr', 'ocrmac', 'rapidocr', 'tesserocr', 'tesseract']
+2026-05-27 13:56:33,277 [INFO] docling.models.stages.ocr.auto_ocr_model: rapidocr cannot be used because onnxruntime is not installed.
+2026-05-27 13:56:33,277 [INFO] docling.models.stages.ocr.auto_ocr_model: easyocr cannot be used because it is not installed.
+2026-05-27 13:56:33,575 [INFO] docling.utils.accelerator_utils: Accelerator device: 'cpu'
+2026-05-27 13:56:34,647 [INFO] docling.models.stages.ocr.auto_ocr_model: Auto OCR model selected rapidocr with torch.
+2026-05-27 13:56:34,660 [INFO] docling.models.factories.base_factory: Loading plugin 'docling_defaults'
+2026-05-27 13:56:34,662 [INFO] docling.models.factories: Registered layout engines: ['layout_object_detection', 'docling_layout_default', 'docling_experimental_table_crops_layout']
+2026-05-27 13:56:34,676 [INFO] docling.utils.accelerator_utils: Accelerator device: 'cpu'
+2026-05-27 13:56:35,079 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/docling-project/docling-layout-heron/revision/main "HTTP/1.1 200 OK"
+2026-05-27 13:56:35,377 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/docling-project/docling-layout-heron/resolve/8f39ad3c0b4c58e9c2d2c84a38465abf757272d8/model.safetensors "HTTP/1.1 302 Found"
+2026-05-27 13:56:35,378 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/docling-project/docling-layout-heron/resolve/8f39ad3c0b4c58e9c2d2c84a38465abf757272d8/.gitattributes "HTTP/1.1 307 Temporary Redirect"
+2026-05-27 13:56:35,379 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/docling-project/docling-layout-heron/resolve/8f39ad3c0b4c58e9c2d2c84a38465abf757272d8/preprocessor_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-27 13:56:35,384 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/docling-project/docling-layout-heron/resolve/8f39ad3c0b4c58e9c2d2c84a38465abf757272d8/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-27 13:56:35,385 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/docling-project/docling-layout-heron/resolve/8f39ad3c0b4c58e9c2d2c84a38465abf757272d8/README.md "HTTP/1.1 307 Temporary Redirect"
+2026-05-27 13:56:35,386 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/docling-project/docling-layout-heron/resolve/8f39ad3c0b4c58e9c2d2c84a38465abf757272d8/docling_heron_400.png "HTTP/1.1 307 Temporary Redirect"
+2026-05-27 13:56:35,397 [WARNING] huggingface_hub.utils._http: Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+2026-05-27 13:56:35,646 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/docling-project/docling-layout-heron/8f39ad3c0b4c58e9c2d2c84a38465abf757272d8/preprocessor_config.json "HTTP/1.1 200 OK"
+2026-05-27 13:56:35,647 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/docling-project/docling-layout-heron/8f39ad3c0b4c58e9c2d2c84a38465abf757272d8/config.json "HTTP/1.1 200 OK"
+2026-05-27 13:56:35,647 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/docling-project/docling-layout-heron/8f39ad3c0b4c58e9c2d2c84a38465abf757272d8/docling_heron_400.png "HTTP/1.1 200 OK"
+2026-05-27 13:56:35,654 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/docling-project/docling-layout-heron/8f39ad3c0b4c58e9c2d2c84a38465abf757272d8/README.md "HTTP/1.1 200 OK"
+2026-05-27 13:56:35,658 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/docling-project/docling-layout-heron/8f39ad3c0b4c58e9c2d2c84a38465abf757272d8/.gitattributes "HTTP/1.1 200 OK"
+2026-05-27 13:56:35,707 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/resolve-cache/models/docling-project/docling-layout-heron/8f39ad3c0b4c58e9c2d2c84a38465abf757272d8/preprocessor_config.json "HTTP/1.1 200 OK"
+2026-05-27 13:56:35,711 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/resolve-cache/models/docling-project/docling-layout-heron/8f39ad3c0b4c58e9c2d2c84a38465abf757272d8/.gitattributes "HTTP/1.1 200 OK"
+2026-05-27 13:56:35,715 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/resolve-cache/models/docling-project/docling-layout-heron/8f39ad3c0b4c58e9c2d2c84a38465abf757272d8/README.md "HTTP/1.1 200 OK"
+2026-05-27 13:56:35,720 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/resolve-cache/models/docling-project/docling-layout-heron/8f39ad3c0b4c58e9c2d2c84a38465abf757272d8/config.json "HTTP/1.1 200 OK"
+2026-05-27 13:56:35,724 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/resolve-cache/models/docling-project/docling-layout-heron/8f39ad3c0b4c58e9c2d2c84a38465abf757272d8/docling_heron_400.png "HTTP/1.1 200 OK"
+2026-05-27 13:56:35,991 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/docling-project/docling-layout-heron/xet-read-token/8f39ad3c0b4c58e9c2d2c84a38465abf757272d8 "HTTP/1.1 200 OK"
+2026-05-27 13:59:02,497 [INFO] docling.models.factories.base_factory: Loading plugin 'docling_defaults'
+2026-05-27 13:59:02,504 [INFO] docling.models.factories: Registered table structure engines: ['docling_tableformer', 'docling_tableformer_v2', 'granite_vision_table']
+2026-05-27 13:59:03,240 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/docling-project/docling-models/revision/v2.3.0 "HTTP/1.1 200 OK"
+2026-05-27 13:59:03,655 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/docling-project/docling-models/resolve/fc0f2d45e2218ea24bce5045f58a389aed16dc23/.gitattributes "HTTP/1.1 307 Temporary Redirect"
+2026-05-27 13:59:03,656 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/docling-project/docling-models/resolve/fc0f2d45e2218ea24bce5045f58a389aed16dc23/.gitignore "HTTP/1.1 307 Temporary Redirect"
+2026-05-27 13:59:03,657 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/docling-project/docling-models/resolve/fc0f2d45e2218ea24bce5045f58a389aed16dc23/model_artifacts/tableformer/accurate/tableformer_accurate.safetensors "HTTP/1.1 302 Found"
+2026-05-27 13:59:03,659 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/docling-project/docling-models/resolve/fc0f2d45e2218ea24bce5045f58a389aed16dc23/model_artifacts/tableformer/fast/tableformer_fast.safetensors "HTTP/1.1 302 Found"
+2026-05-27 13:59:03,662 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/docling-project/docling-models/resolve/fc0f2d45e2218ea24bce5045f58a389aed16dc23/model_artifacts/tableformer/fast/tm_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-27 13:59:03,663 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/docling-project/docling-models/resolve/fc0f2d45e2218ea24bce5045f58a389aed16dc23/README.md "HTTP/1.1 307 Temporary Redirect"
+2026-05-27 13:59:03,664 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/docling-project/docling-models/resolve/fc0f2d45e2218ea24bce5045f58a389aed16dc23/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-27 13:59:03,667 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/docling-project/docling-models/resolve/fc0f2d45e2218ea24bce5045f58a389aed16dc23/model_artifacts/tableformer/accurate/tm_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-27 13:59:03,683 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/docling-project/docling-models/fc0f2d45e2218ea24bce5045f58a389aed16dc23/.gitattributes "HTTP/1.1 200 OK"
+2026-05-27 13:59:03,685 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/docling-project/docling-models/fc0f2d45e2218ea24bce5045f58a389aed16dc23/.gitignore "HTTP/1.1 200 OK"
+2026-05-27 13:59:03,690 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/docling-project/docling-models/fc0f2d45e2218ea24bce5045f58a389aed16dc23/model_artifacts%2Ftableformer%2Ffast%2Ftm_config.json "HTTP/1.1 200 OK"
+2026-05-27 13:59:03,693 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/docling-project/docling-models/fc0f2d45e2218ea24bce5045f58a389aed16dc23/README.md "HTTP/1.1 200 OK"
+2026-05-27 13:59:03,695 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/docling-project/docling-models/fc0f2d45e2218ea24bce5045f58a389aed16dc23/config.json "HTTP/1.1 200 OK"
+2026-05-27 13:59:03,705 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/docling-project/docling-models/fc0f2d45e2218ea24bce5045f58a389aed16dc23/model_artifacts%2Ftableformer%2Faccurate%2Ftm_config.json "HTTP/1.1 200 OK"
+2026-05-27 13:59:03,724 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/resolve-cache/models/docling-project/docling-models/fc0f2d45e2218ea24bce5045f58a389aed16dc23/.gitattributes "HTTP/1.1 200 OK"
+2026-05-27 13:59:03,734 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/resolve-cache/models/docling-project/docling-models/fc0f2d45e2218ea24bce5045f58a389aed16dc23/model_artifacts%2Ftableformer%2Ffast%2Ftm_config.json "HTTP/1.1 200 OK"
+2026-05-27 13:59:03,735 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/resolve-cache/models/docling-project/docling-models/fc0f2d45e2218ea24bce5045f58a389aed16dc23/.gitignore "HTTP/1.1 200 OK"
+2026-05-27 13:59:03,738 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/resolve-cache/models/docling-project/docling-models/fc0f2d45e2218ea24bce5045f58a389aed16dc23/model_artifacts%2Ftableformer%2Faccurate%2Ftm_config.json "HTTP/1.1 200 OK"
+2026-05-27 13:59:03,739 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/resolve-cache/models/docling-project/docling-models/fc0f2d45e2218ea24bce5045f58a389aed16dc23/config.json "HTTP/1.1 200 OK"
+2026-05-27 13:59:03,746 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/resolve-cache/models/docling-project/docling-models/fc0f2d45e2218ea24bce5045f58a389aed16dc23/README.md "HTTP/1.1 200 OK"
+2026-05-27 13:59:04,064 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/docling-project/docling-models/xet-read-token/fc0f2d45e2218ea24bce5045f58a389aed16dc23 "HTTP/1.1 200 OK"
+2026-05-27 13:59:04,065 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/docling-project/docling-models/xet-read-token/fc0f2d45e2218ea24bce5045f58a389aed16dc23 "HTTP/1.1 200 OK"
+2026-05-27 14:03:45,892 [INFO] docling.utils.accelerator_utils: Accelerator device: 'cpu'
+2026-05-27 14:03:46,416 [INFO] docling.pipeline.base_pipeline: Processing document fs023-sample-financial-statements.pdf
+2026-05-27 14:05:41,105 [INFO] docling.document_converter: Finished converting document fs023-sample-financial-statements.pdf in 548.17 sec.
+2026-05-27 14:05:41,105 [INFO] sqwakvox.controller: Docling layout conversion complete. Processing tables...
+2026-05-27 14:05:41,229 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-27 14:05:41,236 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-27 14:05:41,238 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-27 14:05:41,242 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-27 14:05:41,244 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-27 14:05:41,246 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-27 14:05:41,249 [WARNING] docling_core.types.doc.document: Usage of TableItem.export_to_dataframe() without `doc` argument is deprecated.
+2026-05-27 14:05:41,299 [INFO] sqwakvox.app: Successfully loaded and parsed structured document: fs023-sample-financial-statements.pdf with 9267 characters.
+2026-05-27 14:08:20,369 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-27 14:08:20,669 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-27 14:08:20,686 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/config.json "HTTP/1.1 200 OK"
+2026-05-27 14:08:20,984 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/config.json "HTTP/1.1 200 OK"
+2026-05-27 14:08:21,234 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/modeling_piguard.py "HTTP/1.1 307 Temporary Redirect"
+2026-05-27 14:08:21,476 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/modeling_piguard.py "HTTP/1.1 307 Temporary Redirect"
+2026-05-27 14:08:21,499 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/modeling_piguard.py "HTTP/1.1 200 OK"
+2026-05-27 14:08:21,621 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/modeling_piguard.py "HTTP/1.1 200 OK"
+2026-05-27 14:08:22,338 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/modeling_piguard.py "HTTP/1.1 307 Temporary Redirect"
+2026-05-27 14:08:22,575 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/modeling_piguard.py "HTTP/1.1 307 Temporary Redirect"
+2026-05-27 14:08:22,597 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/modeling_piguard.py "HTTP/1.1 200 OK"
+2026-05-27 14:08:23,157 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/model.safetensors "HTTP/1.1 307 Temporary Redirect"
+2026-05-27 14:08:23,502 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/model.safetensors "HTTP/1.1 302 Found"
+2026-05-27 14:08:23,874 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/leolee99/PIGuard/xet-read-token/dd78b24e330193a22d2293ac66922dd4f982f563 "HTTP/1.1 200 OK"
+2026-05-27 14:15:35,647 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-27 14:15:36,009 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-27 14:15:36,027 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/config.json "HTTP/1.1 200 OK"
+2026-05-27 14:15:36,269 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/modeling_piguard.py "HTTP/1.1 307 Temporary Redirect"
+2026-05-27 14:15:36,547 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/modeling_piguard.py "HTTP/1.1 307 Temporary Redirect"
+2026-05-27 14:15:36,561 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/modeling_piguard.py "HTTP/1.1 200 OK"
+2026-05-27 14:15:36,847 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-27 14:15:37,147 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-27 14:15:37,165 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/config.json "HTTP/1.1 200 OK"
+2026-05-27 14:15:37,447 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-27 14:15:37,769 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-27 14:15:37,788 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-27 14:15:37,947 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-27 14:15:38,384 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/leolee99/InjecGuard/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 307 Temporary Redirect"
+2026-05-27 14:15:38,661 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/leolee99/PIGuard/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-05-27 14:15:39,183 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/leolee99/InjecGuard/tree/main?recursive=true&expand=false "HTTP/1.1 307 Temporary Redirect"
+2026-05-27 14:15:39,515 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/leolee99/PIGuard/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-05-27 14:15:39,993 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/spm.model "HTTP/1.1 307 Temporary Redirect"
+2026-05-27 14:15:40,301 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/spm.model "HTTP/1.1 302 Found"
+2026-05-27 14:15:42,759 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/tokenizer.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-27 14:15:43,172 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/tokenizer.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-27 14:15:43,191 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/tokenizer.json "HTTP/1.1 200 OK"
+2026-05-27 14:15:43,536 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/tokenizer.json "HTTP/1.1 200 OK"
+2026-05-27 14:15:44,093 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/added_tokens.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-27 14:15:44,397 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/added_tokens.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-27 14:15:44,415 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/added_tokens.json "HTTP/1.1 200 OK"
+2026-05-27 14:15:44,432 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/added_tokens.json "HTTP/1.1 200 OK"
+2026-05-27 14:15:44,719 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/special_tokens_map.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-27 14:15:44,961 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/special_tokens_map.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-27 14:15:44,981 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/special_tokens_map.json "HTTP/1.1 200 OK"
+2026-05-27 14:15:45,001 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/resolve-cache/models/leolee99/PIGuard/dd78b24e330193a22d2293ac66922dd4f982f563/special_tokens_map.json "HTTP/1.1 200 OK"
+2026-05-27 14:15:45,256 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/InjecGuard/resolve/main/chat_template.jinja "HTTP/1.1 307 Temporary Redirect"
+2026-05-27 14:15:45,494 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/leolee99/PIGuard/resolve/main/chat_template.jinja "HTTP/1.1 404 Not Found"
+2026-05-27 14:15:47,268 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/leolee99/InjecGuard "HTTP/1.1 307 Temporary Redirect"
+2026-05-27 14:15:47,673 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/leolee99/PIGuard "HTTP/1.1 200 OK"
+2026-05-27 14:15:47,675 [INFO] sqwakvox.guardrails: Mozilla any-guardrail successfully initialized with INJECGUARD.
+2026-05-27 14:15:52,650 [INFO] sqwakvox.agent: Starting any-agent execution — model: gemini:gemini-2.5-flash
+2026-05-27 14:15:56,326 [INFO] google_genai.models: AFC is enabled with max remote calls: 10.
+2026-05-27 14:15:59,245 [INFO] httpx: HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent "HTTP/1.1 200 OK"
+2026-05-27 14:15:59,343 [INFO] sqwakvox.agent: Agent execution complete — response length: 731 chars
