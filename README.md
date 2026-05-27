@@ -97,7 +97,7 @@ API keys are entered at runtime in the TUI sidebar (never stored). Supported env
 3. **Numerical Cross-Validation** — The `FinancialRuleEngine` parses labelled figures from document tables and cross-checks LLM responses for arithmetic consistency
 4. **Audit Logging** — All operations (ingest, query, response) are timestamped and written to an append-only JSONL audit log
 
-## Build
+## Build With UV
 
 To build the application:
 
@@ -106,7 +106,7 @@ uv sync
 uv build
 ```
 
-## Run
+## Run With UV
 
 ```bash
 uv run sqwakvox
