@@ -348,10 +348,8 @@ class SqwakvoxApp(App[None]):
                 self.chat_histories[self.active_document_name].append(markup)
 
         try:
-            from textual.worker import NoActiveWorker
-            get_current_worker()
             self.call_from_thread(_write)
-        except NoActiveWorker:
+        except RuntimeError:
             _write()
 
     def action_scroll_up(self) -> None:
