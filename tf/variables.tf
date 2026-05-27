@@ -11,9 +11,9 @@ variable "instance_type" {
 }
 
 variable "ami_id" {
-  description = "AMI ID for EC2 (defaults to Amazon Linux 2023 in us-east-1)"
+  description = "AMI ID for EC2 (if left empty, dynamically queries the latest Amazon Linux 2023 AMI for the selected region)"
   type        = string
-  default     = "ami-0e86e20dae9224db8"
+  default     = ""
 }
 
 variable "ssh_key_name" {

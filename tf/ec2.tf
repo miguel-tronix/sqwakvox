@@ -26,7 +26,7 @@ resource "aws_security_group" "sqwakvox" {
 }
 
 resource "aws_instance" "sqwakvox" {
-  ami                  = var.ami_id
+  ami                  = var.ami_id != "" ? var.ami_id : data.aws_ami.al2023.id
   instance_type        = var.instance_type
   key_name             = var.ssh_key_name
   iam_instance_profile = aws_iam_instance_profile.sqwakvox_bedrock.name
@@ -51,6 +51,21 @@ resource "aws_instance" "sqwakvox" {
   tags = {
     Name        = "${var.environment}-sqwakvox"
     Environment = var.environment
+  }
+}
+
+data "aws_ami" "al2023" {
+  most_recent = true
+  owners      = ["amazon"]
+
+  filter {
+    name   = "name"
+    values = ["al2023-ami-202*-x86_64-gp3"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
   }
 }
 
