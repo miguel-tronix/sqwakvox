@@ -314,37 +314,37 @@ class SqwakvoxApp(App[None]):
     def _load_mcp_servers(self) -> None:
         """Load MCP servers config from standard locations."""
         from any_agent.config import MCPStdio
-        
+
         self.mcp_configs = []
-        
+
         paths = [
             Path("mcp_servers.json"),
             Path.home() / ".sqwakvox" / "mcp_servers.json",
             Path.home() / ".config" / "sqwakvox" / "mcp_servers.json",
         ]
-        
+
         for path in paths:
             if path.exists():
                 try:
-                    with open(path, "r", encoding="utf-8") as f:
+                    with open(path, encoding="utf-8") as f:
                         config = json.load(f)
-                    
+
                     servers_dict = config.get("mcpServers", config)
                     if not isinstance(servers_dict, dict):
                         continue
-                        
+
                     for name, srv in servers_dict.items():
                         if not isinstance(srv, dict) or "command" not in srv:
                             continue
-                        
+
                         cmd = srv["command"]
                         args = srv.get("args", [])
                         env = srv.get("env", None)
                         if env:
                             env = {str(k): str(v) for k, v in env.items()}
-                        
+
                         timeout_seconds = srv.get("client_session_timeout_seconds", 300.0)
-                        
+
                         mcp_opt = MCPStdio(
                             command=cmd,
                             args=args,
@@ -356,14 +356,16 @@ class SqwakvoxApp(App[None]):
                     break
                 except Exception as e:
                     logger.error("Error loading MCP servers from %s: %s", path, e)
-        
+
         list_view = self.query_one("#mcp-servers-list", ListView)
         list_view.clear()
-        
+
         if not self.mcp_configs:
             list_view.append(
                 ListItem(
-                    Label("[dim]No MCP servers active.\nCreate mcp_servers.json to add tools.[/dim]"),
+                    Label(
+                        "[dim]No MCP servers active.\nCreate mcp_servers.json to add tools.[/dim]"
+                    ),
                     disabled=True,
                 )
             )
@@ -426,7 +428,7 @@ class SqwakvoxApp(App[None]):
 
     def _chat_log_path(self, doc_name: str) -> Path:
         """Return the on-disk JSON chat-log path for *doc_name*."""
-        safe = re.sub(r'[^\w.\-]', '_', doc_name)
+        safe = re.sub(r"[^\w.\-]", "_", doc_name)
         return self._chat_log_dir / f"{safe}.jsonl"
 
     def _save_chat_log(self, doc_name: str) -> None:
@@ -517,8 +519,7 @@ class SqwakvoxApp(App[None]):
                 )
             else:
                 self.write_chat_message(
-                    f"  [red]✗[/red] Column '{col_name}' "
-                    f"expected {expected} but got {actual:.2f}",
+                    f"  [red]✗[/red] Column '{col_name}' expected {expected} but got {actual:.2f}",
                     persist=True,
                 )
 
@@ -550,8 +551,7 @@ class SqwakvoxApp(App[None]):
             persist=False,
         )
         self.write_chat_message(
-            "[italic dim]Initializing Docling Parser "
-            "(this may take a few seconds)...[/italic dim]",
+            "[italic dim]Initializing Docling Parser (this may take a few seconds)...[/italic dim]",
             persist=False,
         )
         logger.info(f"Initiated parsing for document source: {source}")
@@ -591,8 +591,7 @@ class SqwakvoxApp(App[None]):
         self.is_parsing = False
         self.active_error = error_message
         self.write_chat_message(
-            f"[bold red]✗ Parsing failed:[/bold red] "
-            f"{escape(extract_message(error_message))}",
+            f"[bold red]✗ Parsing failed:[/bold red] {escape(extract_message(error_message))}",
             persist=False,
         )
 

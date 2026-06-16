@@ -19,6 +19,7 @@ class TerminalChartPlotter:
         def _bar(val: float) -> str:
             bar_len = int((val / max_val) * max_width)
             return "█" * bar_len + "░" * (max_width - bar_len)
+
         lines = [
             f"{label:<15} {_bar(val)} {val:>8.2f}"
             for label, val in zip(labels, values, strict=True)
@@ -35,10 +36,7 @@ class TerminalChartPlotter:
         if rng == 0:
             return "".join(blocks[4] for _ in values)
 
-        spark = [
-            blocks[int(((val - min_v) / rng) * (len(blocks) - 1))]
-            for val in values
-        ]
+        spark = [blocks[int(((val - min_v) / rng) * (len(blocks) - 1))] for val in values]
         return "".join(spark)
 
 
@@ -53,6 +51,7 @@ class UnicodeTableFormatter:
                 return True
             except ValueError:
                 return False
+
         numeric_count = sum(1 for row in rows if _is_numeric(row))
         return "right" if numeric_count > len(rows) // 2 else "left"
 
@@ -147,12 +146,7 @@ class DocumentRenderPane(VerticalScroll):
         for col_idx in range(min(len(table.rows[0]), len(table.headers))):
             try:
                 values = [
-                    float(
-                        row[col_idx]
-                        .replace("$", "")
-                        .replace(",", "")
-                        .replace("%", "")
-                    )
+                    float(row[col_idx].replace("$", "").replace(",", "").replace("%", ""))
                     for row in table.rows
                     if col_idx < len(row)
                 ]
