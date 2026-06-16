@@ -165,3 +165,44 @@ def test_app_controller_execute_agent_blocked(mock_guardrail):
     assert result.success is False
     assert result.is_blocked is True
     assert result.blocked_reason == "Mozilla any-guardrail prompt safety violation"
+
+
+@patch("sqwakvox.controller.AnyGuardrailValidator")
+@patch("sqwakvox.controller.PIIRedactor")
+@patch("sqwakvox.controller.AuditLogger")
+@patch("sqwakvox.agent.AnyAgentOrchestrator")
+@patch("sqwakvox.controller.FinancialRuleEngine")
+def test_app_controller_execute_agent_with_mcp(
+    mock_engine, mock_orchestrator, mock_audit, mock_redactor, mock_guardrail
+):
+    controller = AppController()
+    mock_guardrail.validate_prompt.return_value = True
+    mock_redactor.redact_text.side_effect = lambda x: x
+    mock_orchestrator.execute_query.return_value = "Agent response"
+    
+    mock_verification = MagicMock()
+    mock_verification.passed = True
+    mock_engine.cross_check_text_assertions.return_value = mock_verification
+    
+    mcp_servers = ["dummy_mcp_config"]
+    
+    result = controller.execute_agent(
+        model_id="test-model",
+        api_key="sk-test",
+        user_query="Hello",
+        doc_context="Context",
+        active_document_name="doc.md",
+        data_store={},
+        mcp_servers=mcp_servers
+    )
+    
+    assert result.success is True
+    mock_orchestrator.execute_query.assert_called_once_with(
+        model_id="test-model",
+        api_key="sk-test",
+        context="Context",
+        prompt="Hello",
+        env_var="OPENAI_API_KEY",
+        mcp_servers=mcp_servers
+    )
+

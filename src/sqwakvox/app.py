@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import logging
+import re
 from pathlib import Path
 from typing import ClassVar
 
@@ -39,7 +41,7 @@ CSS = """
 Screen {
     layout: grid;
     grid-size: 3;
-    grid-columns: 1fr 2.6fr 1.4fr;
+    grid-columns: 1fr 2fr 2fr;
     grid-rows: 1fr;
 }
 
@@ -73,6 +75,17 @@ Screen {
 #ingest-history {
     height: auto;
     max-height: 8;
+    margin-top: 1;
+}
+
+#mcp-servers-list {
+    height: auto;
+    max-height: 8;
+    margin-top: 1;
+    margin-bottom: 1;
+}
+
+#mcp-servers-label {
     margin-top: 1;
 }
 
@@ -112,11 +125,11 @@ Screen {
 
 #chat-input-row {
     height: auto;
-    overflow-x: auto;
 }
 
 #chat-input {
     height: 3;
+    width: 85%;
 }
 
 #status-bar {
@@ -232,6 +245,9 @@ class SqwakvoxApp(App[None]):
         self.ingestion_history: list[str] = []
         self.loaded_documents: dict[str, StructuredDocument] = {}
         self.chat_histories: dict[str, list[str]] = {}
+        self._chat_log_dir = Path.home() / ".sqwakvox_chat_logs"
+        self._chat_log_dir.mkdir(parents=True, exist_ok=True)
+        self.mcp_configs: list[tuple[str, Any]] = []
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -263,6 +279,9 @@ class SqwakvoxApp(App[None]):
                 id="api-key-input",
             )
 
+            yield Label("[bold]MCP Servers[/bold]", id="mcp-servers-label")
+            yield ListView(id="mcp-servers-list")
+
             yield Label("[bold]Ingest History[/bold]", id="history-label")
             yield ListView(id="ingest-history")
 
@@ -290,6 +309,72 @@ class SqwakvoxApp(App[None]):
 
     def on_mount(self) -> None:
         self._update_ui_state()
+        self._load_mcp_servers()
+
+    def _load_mcp_servers(self) -> None:
+        """Load MCP servers config from standard locations."""
+        from any_agent.config import MCPStdio
+        
+        self.mcp_configs = []
+        
+        paths = [
+            Path("mcp_servers.json"),
+            Path.home() / ".sqwakvox" / "mcp_servers.json",
+            Path.home() / ".config" / "sqwakvox" / "mcp_servers.json",
+        ]
+        
+        for path in paths:
+            if path.exists():
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        config = json.load(f)
+                    
+                    servers_dict = config.get("mcpServers", config)
+                    if not isinstance(servers_dict, dict):
+                        continue
+                        
+                    for name, srv in servers_dict.items():
+                        if not isinstance(srv, dict) or "command" not in srv:
+                            continue
+                        
+                        cmd = srv["command"]
+                        args = srv.get("args", [])
+                        env = srv.get("env", None)
+                        if env:
+                            env = {str(k): str(v) for k, v in env.items()}
+                        
+                        timeout_seconds = srv.get("client_session_timeout_seconds", 300.0)
+                        
+                        mcp_opt = MCPStdio(
+                            command=cmd,
+                            args=args,
+                            env=env,
+                            tools=srv.get("tools", None),
+                            client_session_timeout_seconds=timeout_seconds,
+                        )
+                        self.mcp_configs.append((name, mcp_opt))
+                    break
+                except Exception as e:
+                    logger.error("Error loading MCP servers from %s: %s", path, e)
+        
+        list_view = self.query_one("#mcp-servers-list", ListView)
+        list_view.clear()
+        
+        if not self.mcp_configs:
+            list_view.append(
+                ListItem(
+                    Label("[dim]No MCP servers active.\nCreate mcp_servers.json to add tools.[/dim]"),
+                    disabled=True,
+                )
+            )
+        else:
+            for name, config in self.mcp_configs:
+                list_view.append(
+                    ListItem(
+                        Label(f"🟢 [bold]{name}[/bold] ({config.command})"),
+                        id=f"mcp-item-{name}",
+                    )
+                )
 
     def _update_ui_state(self) -> None:
         status_bar = self.query_one("#status-bar", Label)
@@ -335,8 +420,40 @@ class SqwakvoxApp(App[None]):
         chat_log.clear()
         if self.active_document_name:
             self.chat_histories[self.active_document_name] = []
+            self._save_chat_log(self.active_document_name)
         self.write_chat_message("[italic]Chat cleared.[/italic]", persist=True)
         chat_logger.info("Chat log cleared by user")
+
+    def _chat_log_path(self, doc_name: str) -> Path:
+        """Return the on-disk JSON chat-log path for *doc_name*."""
+        safe = re.sub(r'[^\w.\-]', '_', doc_name)
+        return self._chat_log_dir / f"{safe}.jsonl"
+
+    def _save_chat_log(self, doc_name: str) -> None:
+        """Flush the in-memory chat history for *doc_name* to disk."""
+        path = self._chat_log_path(doc_name)
+        try:
+            with path.open("w", encoding="utf-8") as fh:
+                for line in self.chat_histories.get(doc_name, []):
+                    fh.write(json.dumps(line, ensure_ascii=False) + "\n")
+        except OSError:
+            logger.warning("Could not write chat log to %s", path)
+
+    def _load_chat_log(self, doc_name: str) -> list[str]:
+        """Load a previously saved chat log from disk, if it exists."""
+        path = self._chat_log_path(doc_name)
+        if not path.exists():
+            return []
+        entries: list[str] = []
+        try:
+            with path.open("r", encoding="utf-8") as fh:
+                for raw_line in fh:
+                    raw_line = raw_line.strip()
+                    if raw_line:
+                        entries.append(json.loads(raw_line))
+        except (OSError, json.JSONDecodeError):
+            logger.warning("Could not read chat log from %s", path)
+        return entries
 
     def write_chat_message(self, markup: str, persist: bool = True) -> None:
         def _write() -> None:
@@ -346,6 +463,7 @@ class SqwakvoxApp(App[None]):
                 if self.active_document_name not in self.chat_histories:
                     self.chat_histories[self.active_document_name] = []
                 self.chat_histories[self.active_document_name].append(markup)
+                self._save_chat_log(self.active_document_name)
 
         try:
             self.call_from_thread(_write)
@@ -458,7 +576,8 @@ class SqwakvoxApp(App[None]):
         self.is_parsing = False
         self.loaded_documents[source] = structured
         if structured.file_name not in self.chat_histories:
-            self.chat_histories[structured.file_name] = []
+            saved = self._load_chat_log(structured.file_name)
+            self.chat_histories[structured.file_name] = saved
 
         if source not in self.ingestion_history:
             self.ingestion_history.append(source)
@@ -537,6 +656,7 @@ class SqwakvoxApp(App[None]):
 
     def _execute_agent_background(self, model_id: str, api_key: str, user_query: str) -> None:
         data_store = self.controller.build_financial_data_store(self.structured_doc)
+        mcp_servers = [cfg for _, cfg in self.mcp_configs]
         result = self.controller.execute_agent(
             model_id=model_id,
             api_key=api_key,
@@ -544,6 +664,7 @@ class SqwakvoxApp(App[None]):
             doc_context=self.doc_context,
             active_document_name=self.active_document_name,
             data_store=data_store,
+            mcp_servers=mcp_servers,
         )
 
         if result.is_blocked:
@@ -654,6 +775,9 @@ class SqwakvoxApp(App[None]):
         # Clear and restore active document's chat log
         chat_log = self.query_one("#chat-log", RichLog)
         chat_log.clear()
+        # If we have no in-memory history yet, try loading from disk
+        if doc.file_name not in self.chat_histories:
+            self.chat_histories[doc.file_name] = self._load_chat_log(doc.file_name)
         history = self.chat_histories.get(doc.file_name, [])
         if history:
             for msg_markup in history:
@@ -666,6 +790,7 @@ class SqwakvoxApp(App[None]):
             )
             chat_log.write(msg)
             self.chat_histories[doc.file_name] = [msg]
+            self._save_chat_log(doc.file_name)
             chat_logger.info("Document loaded: %s (%d chars)", doc.file_name, char_count)
             logger.info(
                 f"Successfully loaded and parsed structured document: "
