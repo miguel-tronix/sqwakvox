@@ -13,4 +13,4 @@ sqwakvoxchat.log
 *.log
 
 # VSCode
-.vscode/*
+.vscode
