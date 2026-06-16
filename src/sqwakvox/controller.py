@@ -4,6 +4,7 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from docling.document_converter import DocumentConverter
 
@@ -210,6 +211,7 @@ class AppController:
         doc_context: str,
         active_document_name: str,
         data_store: dict[str, float],
+        mcp_servers: list[Any] | None = None,
     ) -> AgentResult:
         result = AgentResult()
 
@@ -248,6 +250,7 @@ class AppController:
                 context=doc_context,
                 prompt=redacted_query,
                 env_var=env_var,
+                mcp_servers=mcp_servers,
             )
 
             # 3. Output PII Redaction

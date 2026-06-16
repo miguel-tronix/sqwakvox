@@ -8,6 +8,8 @@ from contextlib import contextmanager
 
 from any_agent import AgentConfig, AgentFramework
 from any_agent import AnyAgent as AnyAgentLib
+from any_agent.config import MCPParams
+from any_llm.utils.aio import run_async_in_sync
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +43,7 @@ class AnyAgentOrchestrator:
         context: str,
         prompt: str,
         env_var: str,
+        mcp_servers: list[MCPParams] | None = None,
     ) -> str:
         instructions = (
             f"You are a helpful Financial Document Assistant.\n"
@@ -51,6 +54,7 @@ class AnyAgentOrchestrator:
         config = AgentConfig(
             model_id=model_id,
             instructions=instructions,
+            tools=mcp_servers or [],
         )
 
         logger.info("Starting any-agent execution — model: %s", model_id)
@@ -59,7 +63,14 @@ class AnyAgentOrchestrator:
                 agent_framework=AgentFramework("langchain"),
                 agent_config=config,
             )
-            trace = agent.run(prompt)
-            response = str(trace.final_output)
-            logger.info("Agent execution complete — response length: %d chars", len(response))
-            return response
+            try:
+                trace = agent.run(prompt)
+                response = str(trace.final_output)
+                logger.info("Agent execution complete — response length: %d chars", len(response))
+                return response
+            finally:
+                try:
+                    run_async_in_sync(agent.cleanup_async())
+                except Exception as e:
+                    logger.warning("Failed to clean up any-agent: %s", e)
+

@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "fetch": {
+      "command": "uvx",
+      "args": ["mcp-server-fetch"],
+      "client_session_timeout_seconds": 300
+    },
+    "sqlite": {
+      "command": "uvx",
+      "args": [
+        "mcp-server-sqlite",
+        "--db-path",
+        "sqwakvox_mcp.db"
+      ],
+      "client_session_timeout_seconds": 300
+    }
+  }
+}
