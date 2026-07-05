@@ -41,7 +41,7 @@ CSS = """
 Screen {
     layout: grid;
     grid-size: 3;
-    grid-columns: 1fr 2fr 2fr;
+    grid-columns: 1fr 2.2fr 1fr;
     grid-rows: 1fr;
 }
 
@@ -862,11 +862,11 @@ class SqwakvoxApp(App[None]):
             render_pane = self.query_one("#render-pane")
             agent_pane = self.query_one("#agent-response-pane")
             if event.tab.id == "view-doc":
-                render_pane.styles.display = ""
+                render_pane.styles.display = "block"
                 agent_pane.styles.display = "none"
             elif event.tab.id == "view-agent":
                 render_pane.styles.display = "none"
-                agent_pane.styles.display = ""
+                agent_pane.styles.display = "block"
                 agent_pane.focus()
             return
 
