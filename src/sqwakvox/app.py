@@ -41,7 +41,7 @@ CSS = """
 Screen {
     layout: grid;
     grid-size: 3;
-    grid-columns: 1fr 2fr 2fr;
+    grid-columns: 1fr 2.2fr 1fr;
     grid-rows: 1fr;
 }
 
@@ -109,6 +109,26 @@ Screen {
 }
 
 #render-pane:focus {
+    border: double $secondary;
+}
+
+#view-tabs {
+    min-height: 3;
+    height: 3;
+    background: $panel;
+    border-bottom: solid $secondary;
+}
+
+#agent-response-pane {
+    border: solid $secondary;
+    padding: 1;
+    background: $surface;
+    overflow-y: auto;
+    height: 1fr;
+    display: none;
+}
+
+#agent-response-pane:focus {
     border: double $secondary;
 }
 
@@ -287,7 +307,13 @@ class SqwakvoxApp(App[None]):
 
         with Vertical(id="center-column"):
             yield Tabs(id="document-tabs")
+            yield Tabs(
+                Tab("Document", id="view-doc"),
+                Tab("Agent Response", id="view-agent"),
+                id="view-tabs",
+            )
             yield DocumentRenderPane(id="render-pane")
+            yield RichLog(id="agent-response-pane", highlight=True, markup=True, wrap=True)
 
         with Vertical(id="chat-column"):
             yield RichLog(id="chat-log", highlight=True, markup=True, wrap=True)
@@ -472,6 +498,19 @@ class SqwakvoxApp(App[None]):
         except RuntimeError:
             _write()
 
+    def write_agent_response(self, markup: str) -> None:
+        def _write() -> None:
+            try:
+                agent_pane = self.query_one("#agent-response-pane", RichLog)
+                agent_pane.write(markup)
+            except Exception:
+                pass
+
+        try:
+            self.call_from_thread(_write)
+        except RuntimeError:
+            _write()
+
     def action_scroll_up(self) -> None:
         focused = self.focused
         if focused and hasattr(focused, "scroll_up"):
@@ -485,6 +524,7 @@ class SqwakvoxApp(App[None]):
     def action_focus_next_pane(self) -> None:
         panes = [
             self.query_one("#doc-source", Input),
+            self.query_one("#agent-response-pane", RichLog),
             self.query_one("#render-pane", DocumentRenderPane),
             self.query_one("#chat-input", Input),
         ]
@@ -504,24 +544,26 @@ class SqwakvoxApp(App[None]):
             )
             return
 
-        self.write_chat_message(
-            "\n[bold underline]Numerical Cross-Validation[/bold underline]",
-            persist=True,
-        )
+        cv_header = "\n[bold underline]Numerical Cross-Validation[/bold underline]"
+        self.write_chat_message(cv_header, persist=True)
+        self.write_agent_response(cv_header)
 
         results = self.controller.cross_validate(self.structured_doc)
         for col_name, expected, actual, is_valid in results:
             if is_valid:
-                self.write_chat_message(
+                msg = (
                     f"  [green]✓[/green] Column '{col_name}' "
-                    f"sums to {expected} (actual: {actual:.2f})",
-                    persist=True,
+                    f"sums to {expected} (actual: {actual:.2f})"
                 )
+                self.write_chat_message(msg, persist=True)
+                self.write_agent_response(msg)
             else:
-                self.write_chat_message(
-                    f"  [red]✗[/red] Column '{col_name}' expected {expected} but got {actual:.2f}",
-                    persist=True,
+                msg = (
+                    f"  [red]✗[/red] Column '{col_name}' "
+                    f"expected {expected} but got {actual:.2f}"
                 )
+                self.write_chat_message(msg, persist=True)
+                self.write_agent_response(msg)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn-browse":
@@ -646,6 +688,9 @@ class SqwakvoxApp(App[None]):
             "[italic dim]Agent is thinking (via LangChain)...[/italic dim]",
             persist=False,
         )
+        self.write_agent_response(
+            "[italic dim]Agent is thinking (via LangChain)...[/italic dim]"
+        )
 
         self.run_worker(
             lambda: self._execute_agent_background(selected_model, api_key, user_query),
@@ -671,28 +716,30 @@ class SqwakvoxApp(App[None]):
             return
 
         if result.pii_redacted_query:
-            self.write_chat_message(
-                "[italic dim]PII detected and redacted from query.[/italic dim]",
-                persist=True,
-            )
+            pii_msg = "[italic dim]PII detected and redacted from query.[/italic dim]"
+            self.write_chat_message(pii_msg, persist=True)
+            self.write_agent_response(pii_msg)
 
         if not result.success:
             self.call_from_thread(self._on_agent_failure, result.error_message)
             return
 
         if result.math_discrepancies:
-            self.write_chat_message(
+            disc_msg = (
                 "[bold yellow]System: Numerical discrepancies detected between "
-                "agent assertions and parsed tables![/bold yellow]",
-                persist=True,
+                "agent assertions and parsed tables![/bold yellow]"
             )
+            self.write_chat_message(disc_msg, persist=True)
+            self.write_agent_response(disc_msg)
             for discrepancy in result.math_discrepancies:
                 self.write_chat_message(f"  [yellow]⚠[/yellow] {discrepancy}", persist=True)
+                self.write_agent_response(f"  [yellow]⚠[/yellow] {discrepancy}")
 
         self.call_from_thread(self._on_agent_success, result.response, user_query)
 
     def _on_agent_success(self, response: str, query: str) -> None:
         self.write_chat_message(f"[bold green]Agent:[/bold green] {response}", persist=True)
+        self.write_agent_response(f"[bold green]Agent:[/bold green] {response}")
         chat_logger.info("Agent response (%d chars)", len(response))
 
         AuditLogger.log(
@@ -703,11 +750,12 @@ class SqwakvoxApp(App[None]):
         )
 
     def _on_agent_blocked(self, reason: str) -> None:
-        self.write_chat_message(
+        msg = (
             f"[bold red]✗ Input Blocked:[/bold red] "
-            f"Prompt blocked by guardrail system: {escape(extract_message(reason))}",
-            persist=True,
+            f"Prompt blocked by guardrail system: {escape(extract_message(reason))}"
         )
+        self.write_chat_message(msg, persist=True)
+        self.write_agent_response(msg)
         chat_logger.warning("Agent BLOCKED: %s", reason)
         AuditLogger.log(
             document_id=self.active_document_name or "unknown",
@@ -718,10 +766,9 @@ class SqwakvoxApp(App[None]):
 
     def _on_agent_failure(self, error_message: str) -> None:
         display_message = escape(extract_message(error_message))
-        self.write_chat_message(
-            f"[bold red]✗ Agent execution failed:[/bold red] {display_message}",
-            persist=True,
-        )
+        msg = f"[bold red]✗ Agent execution failed:[/bold red] {display_message}"
+        self.write_chat_message(msg, persist=True)
+        self.write_agent_response(msg)
         chat_logger.error("Agent FAILURE: %s", error_message)
         AuditLogger.log(
             document_id=self.active_document_name or "unknown",
@@ -771,6 +818,9 @@ class SqwakvoxApp(App[None]):
             except ValueError:
                 pass
 
+        # Clear agent response pane when switching documents
+        self.query_one("#agent-response-pane", RichLog).clear()
+
         # Clear and restore active document's chat log
         chat_log = self.query_one("#chat-log", RichLog)
         chat_log.clear()
@@ -806,6 +856,18 @@ class SqwakvoxApp(App[None]):
 
     def on_tabs_tab_activated(self, event: Tabs.TabActivated) -> None:
         if not event.tab or not event.tab.id:
+            return
+
+        if event.tabs.id == "view-tabs":
+            render_pane = self.query_one("#render-pane")
+            agent_pane = self.query_one("#agent-response-pane")
+            if event.tab.id == "view-doc":
+                render_pane.styles.display = "block"
+                agent_pane.styles.display = "none"
+            elif event.tab.id == "view-agent":
+                render_pane.styles.display = "none"
+                agent_pane.styles.display = "block"
+                agent_pane.focus()
             return
 
         try:
