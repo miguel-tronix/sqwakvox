@@ -27,6 +27,7 @@ dependencies = [
     "any-agent[langchain]>=1.18.0",
     "google-genai>=2.6.0",
     "mcp>=1.0.0",
+    "mypy>=2.1.0",
 ]
 
 [dependency-groups]

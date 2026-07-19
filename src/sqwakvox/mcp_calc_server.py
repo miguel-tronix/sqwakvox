@@ -13,6 +13,8 @@ import ast
 import math
 import operator as op
 from collections import Counter
+from collections.abc import Callable
+from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
@@ -22,7 +24,7 @@ mcp = FastMCP("sqwakvox-calc-stats")
 # Safe expression evaluator (whitelist-based AST walker)
 # ---------------------------------------------------------------------------
 
-_SAFE_OPS: dict[type, object] = {
+_SAFE_OPS: dict[type, Callable[..., Any]] = {
     ast.Add: op.add,
     ast.Sub: op.sub,
     ast.Mult: op.mul,
@@ -40,7 +42,7 @@ _SAFE_OPS: dict[type, object] = {
     ast.Invert: op.invert,
 }
 
-_SAFE_FUNCTIONS: dict[str, object] = {
+_SAFE_FUNCTIONS: dict[str, Any] = {
     "abs": abs,
     "round": round,
     "min": min,
@@ -68,7 +70,7 @@ _SAFE_FUNCTIONS: dict[str, object] = {
 }
 
 
-def _eval_node(node: ast.AST) -> float | int:
+def _eval_node(node: ast.AST) -> Any:
     """Recursively evaluate a safe AST node."""
     match node:
         case ast.Constant(value):
@@ -102,7 +104,7 @@ def _eval_node(node: ast.AST) -> float | int:
             raise ValueError(f"Unsupported expression node: {type(node).__name__}")
 
 
-def safe_eval(expression: str) -> float | int:
+def safe_eval(expression: str) -> Any:
     """Safely evaluate a mathematical expression.
 
     Only whitelisted operators and math functions are permitted.
