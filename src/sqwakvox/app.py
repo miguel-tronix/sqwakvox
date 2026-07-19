@@ -4,7 +4,7 @@ import json
 import logging
 import re
 from pathlib import Path
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from rich.markup import escape
 from textual.app import App, ComposeResult
@@ -338,8 +338,23 @@ class SqwakvoxApp(App[None]):
         self._load_mcp_servers()
 
     def _load_mcp_servers(self) -> None:
-        """Load MCP servers config from standard locations."""
+        """Load MCP servers config from standard locations.
+
+        Supports both stdio servers (``command``/``args``) and HTTP-based
+        servers (``url`` with ``transport`` of ``sse`` or ``http``). The latter
+        lets the calc-stats server run as a long-lived process and sidesteps the
+        async->sync stdio threading issues (see mcp_fixes.md, Priority 1).
+        """
         from any_agent.config import MCPStdio
+
+        try:
+            from any_agent.config import MCPSse, MCPStreamableHttp
+        except ImportError:  # pragma: no cover - older any-agent
+            sse_class: object | None = None
+            http_class: object | None = None
+        else:
+            sse_class = MCPSse
+            http_class = MCPStreamableHttp
 
         self.mcp_configs = []
 
@@ -352,7 +367,7 @@ class SqwakvoxApp(App[None]):
         for path in paths:
             if path.exists():
                 try:
-                    with open(path, encoding="utf-8") as f:
+                    with path.open(encoding="utf-8") as f:
                         config = json.load(f)
 
                     servers_dict = config.get("mcpServers", config)
@@ -360,25 +375,33 @@ class SqwakvoxApp(App[None]):
                         continue
 
                     for name, srv in servers_dict.items():
-                        if not isinstance(srv, dict) or "command" not in srv:
+                        if not isinstance(srv, dict):
                             continue
-
-                        cmd = srv["command"]
-                        args = srv.get("args", [])
-                        env = srv.get("env", None)
-                        if env:
-                            env = {str(k): str(v) for k, v in env.items()}
 
                         timeout_seconds = srv.get("client_session_timeout_seconds", 300.0)
 
-                        mcp_opt = MCPStdio(
-                            command=cmd,
-                            args=args,
-                            env=env,
-                            tools=srv.get("tools", None),
-                            client_session_timeout_seconds=timeout_seconds,
-                        )
-                        self.mcp_configs.append((name, mcp_opt))
+                        if "url" in srv:
+                            mcp_opt = self._build_http_mcp(
+                                srv, timeout_seconds, sse_class, http_class
+                            )
+                        elif "command" in srv:
+                            cmd = srv["command"]
+                            args = srv.get("args", [])
+                            env = srv.get("env", None)
+                            if env:
+                                env = {str(k): str(v) for k, v in env.items()}
+                            mcp_opt = MCPStdio(
+                                command=cmd,
+                                args=args,
+                                env=env,
+                                tools=srv.get("tools", None),
+                                client_session_timeout_seconds=timeout_seconds,
+                            )
+                        else:
+                            continue
+
+                        if mcp_opt is not None:
+                            self.mcp_configs.append((name, mcp_opt))
                     break
                 except Exception as e:
                     logger.error("Error loading MCP servers from %s: %s", path, e)
@@ -403,6 +426,34 @@ class SqwakvoxApp(App[None]):
                         id=f"mcp-item-{name}",
                     )
                 )
+
+    @staticmethod
+    def _build_http_mcp(
+        srv: dict[str, Any],
+        timeout_seconds: float,
+        mcp_sse: Any | None,
+        mcp_http: Any | None,
+    ) -> Any | None:
+        transport = srv.get("transport", "sse")
+        url = srv["url"]
+        headers = srv.get("headers")
+        if transport == "http":
+            if mcp_http is None:
+                logger.error("MCPStreamableHttp unavailable; skipping %s", url)
+                return None
+            return mcp_http(
+                url=url,
+                headers=headers,
+                client_session_timeout_seconds=timeout_seconds,
+            )
+        if mcp_sse is None:
+            logger.error("MCPSse unavailable; skipping %s", url)
+            return None
+        return mcp_sse(
+            url=url,
+            headers=headers,
+            client_session_timeout_seconds=timeout_seconds,
+        )
 
     def _update_ui_state(self) -> None:
         status_bar = self.query_one("#status-bar", Label)
