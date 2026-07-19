@@ -41,6 +41,14 @@ class ModelProvider:
             "env_var": "GEMINI_API_KEY",
             "friendly_name": "Gemini 2.5 Flash",
         },
+        "deepseek:deepseek-chat": {
+            "env_var": "DEEPSEEK_API_KEY",
+            "friendly_name": "DeepSeek V3 (Chat)",
+        },
+        "deepseek:deepseek-reasoner": {
+            "env_var": "DEEPSEEK_API_KEY",
+            "friendly_name": "DeepSeek R1 (Reasoner)",
+        },
     }
 
     @classmethod
