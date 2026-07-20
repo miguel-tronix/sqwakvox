@@ -16,11 +16,14 @@ class TerminalChartPlotter:
         if max_val == 0:
             return "\n".join(f"{label:<15} |" for label in labels)
 
-        lines: list[str] = []
-        for label, val in zip(labels, values, strict=True):
+        def _bar(val: float) -> str:
             bar_len = int((val / max_val) * max_width)
-            bar = "█" * bar_len + "░" * (max_width - bar_len)
-            lines.append(f"{label:<15} {bar} {val:>8.2f}")
+            return "█" * bar_len + "░" * (max_width - bar_len)
+
+        lines = [
+            f"{label:<15} {_bar(val)} {val:>8.2f}"
+            for label, val in zip(labels, values, strict=True)
+        ]
         return "\n".join(lines)
 
     @staticmethod
@@ -33,25 +36,23 @@ class TerminalChartPlotter:
         if rng == 0:
             return "".join(blocks[4] for _ in values)
 
-        spark: list[str] = []
-        for val in values:
-            idx = int(((val - min_v) / rng) * (len(blocks) - 1))
-            spark.append(blocks[idx])
+        spark = [blocks[int(((val - min_v) / rng) * (len(blocks) - 1))] for val in values]
         return "".join(spark)
 
 
 class UnicodeTableFormatter:
     @staticmethod
     def _detect_alignment(rows: list[list[str]], col_idx: int) -> str:
-        numeric_count = 0
-        for row in rows:
+        def _is_numeric(row: list[str]) -> bool:
             cell = row[col_idx].strip()
             cleaned = cell.replace("$", "").replace(",", "").replace("%", "")
             try:
                 float(cleaned)
-                numeric_count += 1
+                return True
             except ValueError:
-                pass
+                return False
+
+        numeric_count = sum(1 for row in rows if _is_numeric(row))
         return "right" if numeric_count > len(rows) // 2 else "left"
 
     @staticmethod
@@ -72,11 +73,10 @@ class UnicodeTableFormatter:
             UnicodeTableFormatter._detect_alignment(padded_rows, i) for i in range(num_cols)
         ]
 
-        col_widths: list[int] = []
-        for i in range(num_cols):
-            widths = [len(padded_headers[i])]
-            widths.extend(len(r[i]) for r in padded_rows)
-            col_widths.append(max(widths) + 2)
+        col_widths = [
+            max([len(padded_headers[i])] + [len(r[i]) for r in padded_rows]) + 2
+            for i in range(num_cols)
+        ]
 
         sep_h = "═"
         sep_v = "║"
@@ -90,10 +90,10 @@ class UnicodeTableFormatter:
         bottom = "╚" + sep_b.join(sep_h * w for w in col_widths) + "╝"
 
         def _format_row(cells: list[str], alignments: list[str]) -> str:
-            parts: list[str] = []
-            for cell, w, _align in zip(cells, col_widths, alignments, strict=True):
-                text = cell.center(w)
-                parts.append(text)
+            parts = [
+                cell.center(w)
+                for cell, w, _align in zip(cells, col_widths, alignments, strict=True)
+            ]
             return sep_v + sep_v.join(parts) + sep_v
 
         lines: list[str] = [top]
@@ -144,17 +144,16 @@ class DocumentRenderPane(VerticalScroll):
         if not table.rows:
             return []
         for col_idx in range(min(len(table.rows[0]), len(table.headers))):
-            values: list[float] = []
-            for row in table.rows:
-                if col_idx < len(row):
-                    cleaned = row[col_idx].replace("$", "").replace(",", "").replace("%", "")
-                    try:
-                        values.append(float(cleaned))
-                    except ValueError:
-                        break
-            else:
-                if values:
-                    return values
+            try:
+                values = [
+                    float(row[col_idx].replace("$", "").replace(",", "").replace("%", ""))
+                    for row in table.rows
+                    if col_idx < len(row)
+                ]
+            except ValueError:
+                continue
+            if values:
+                return values
         return []
 
     def clear_document(self) -> None:

@@ -8,4 +8,9 @@ uv.lock
 .uv
 
 # App logs
+sqwakvox.log
+sqwakvoxchat.log
 *.log
+
+# VSCode
+.vscode

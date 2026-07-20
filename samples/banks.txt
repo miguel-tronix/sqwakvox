@@ -1,0 +1,42 @@
+jpmorgan chase & co./2016 annual report 35 five-year stock performance the following table and graph compare the five-year cumulative total return for jpmorgan chase & co . ( 201cjpmorgan chase 201d or the 201
+cfirm 201d ) common stock with the cumulative return of the s&p 500 index , the kbw bank index and the s&p financial index . the s&p 500 index is a commonly referenced united states of america ( 201cu.s . 201d ) equity benchmark consistin
+g of leading companies from different economic sectors . the kbw bank index seeks to reflect the performance of banks and thrifts that are publicly traded in the u.s . and is composed of leading national money center and regional banks an
+d thrifts . the s&p financial index is an index of financial companies , all of which are components of the s&p 500 . the firm is a component of all three industry indices . the following table and graph assume simultaneous investments of
+ $ 100 on december 31 , 2011 , in jpmorgan chase common stock and in each of the above indices . the comparison assumes that all dividends are reinvested . december 31 , ( in dollars ) 2011 2012 2013 2014 2015 2016 .
+
+table:
+                    "2011": 
+                        "jpmorgan chase": 100.0
+                        "kbw bank index": 100.0
+                        "s&p financial index": 100.0
+                        "s&p 500 index": 100.0
+                    
+                    "2012": 
+                        "jpmorgan chase": 136.18
+                        "kbw bank index": 133.03
+                        "s&p financial index": 128.75
+                        "s&p 500 index": 115.99
+                    
+                    "2013": 
+                        "jpmorgan chase": 186.17
+                        "kbw bank index": 183.26
+                        "s&p financial index": 174.57
+                        "s&p 500 index": 153.55
+                    
+                    "2014": 
+                        "jpmorgan chase": 204.57
+                        "kbw bank index": 200.42
+                        "s&p financial index": 201.06
+                        "s&p 500 index": 174.55
+                    
+                    "2015": 
+                        "jpmorgan chase": 221.68
+                        "kbw bank index": 201.4
+                        "s&p financial index": 197.92
+                        "s&p 500 index": 176.95
+                    
+                    "2016": 
+                        "jpmorgan chase": 298.31
+                        "kbw bank index": 258.82
+                        "s&p financial index": 242.94
+                        "s&p 500 index": 198.1

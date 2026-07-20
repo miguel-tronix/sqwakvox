@@ -1,0 +1,23 @@
+{
+  "mcpServers": {
+    "calc-stats": {
+      "command": ".venv/bin/python",
+      "args": ["-m", "sqwakvox.mcp_calc_server"],
+      "client_session_timeout_seconds": 300
+    },
+    "fetch": {
+      "command": "uvx",
+      "args": ["mcp-server-fetch"],
+      "client_session_timeout_seconds": 300
+    },
+    "sqlite": {
+      "command": "uvx",
+      "args": [
+        "mcp-server-sqlite",
+        "--db-path",
+        "sqwakvox_mcp.db"
+      ],
+      "client_session_timeout_seconds": 300
+    }
+  }
+}
