@@ -1,5 +1,15 @@
 {
   "mcpServers": {
+    "calc-stats": {
+      "command": ".venv/bin/python",
+      "args": ["-m", "sqwakvox.mcp_calc_server"],
+      "client_session_timeout_seconds": 300
+    },
+    "calc-stats-http": {
+      "url": "http://127.0.0.1:8000/sse",
+      "transport": "sse",
+      "client_session_timeout_seconds": 300
+    },
     "fetch": {
       "command": "uvx",
       "args": ["mcp-server-fetch"],
@@ -10,18 +20,8 @@
       "args": [
         "mcp-server-sqlite",
         "--db-path",
-        "/home/migtronix/db.sqlite"
+        "sqwakvox_mcp.db"
       ],
-      "client_session_timeout_seconds": 300
-    },
-    "calc-stats": {
-      "command": ".venv/bin/python",
-      "args": ["-m", "sqwakvox.mcp_calc_server"],
-      "client_session_timeout_seconds": 300
-    },
-    "calc-stats-http": {
-      "url": "http://127.0.0.1:8000/mcp/",
-      "transport": "http",
       "client_session_timeout_seconds": 300
     }
   }

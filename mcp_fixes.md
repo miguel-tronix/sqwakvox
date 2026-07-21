@@ -1,26 +1,42 @@
 ## Recommended Fixes
 
-### Priority 1: Fix MCP Threading (unblock tool usage) — PARTIALLY ADDRESSED
+### Priority 1: Fix MCP Threading (unblock tool usage) — FIXED
 
-The `any-agent` library bridges async→sync via `run_async_in_sync`, which creates event loop / cancel scope conflicts. The fix is in `agent.py` to run MCP servers in a way that avoids cross-task cancel scopes. Options:
+The `any-agent` library bridges async→sync via `run_async_in_sync`, which creates a temporary event loop for agent creation, then closes it. MCP stdio connections (subprocess pipes) are tied to that loop and die when it closes. When the agent later runs in a new loop, tool calls fail, and the model loops retrying the broken tools.
 
-1. **Use `subprocess.Popen` + a dedicated event loop per MCP server** — launch each MCP server in its own process with its own asyncio event loop, managed from the sync thread.
+**Fix implemented in `agent.py`**: `execute_query` now creates a **single long-lived event loop** that spans both agent creation AND execution. This is done via `_execute_in_single_loop` → `_create_and_run_async`. The graph:
 
-2. **Switch MCP transport from stdio to SSE/HTTP** — have the `calc-stats` server run as a long-lived process (e.g., `mcp.run(transport="sse")`) and connect via HTTP, avoiding the stdio threading problem entirely.
+```
+execute_query (sync)
+  └─ _execute_in_single_loop    ← one event loop for everything
+       └─ _create_and_run_async  ← async: create agent, run, cleanup
+            ├─ _create_agent_async    ← MCP connections established here
+            ├─ agent.run_async(prompt) ← same loop, connections still alive!
+            └─ _cleanup_async          ← graceful shutdown
+```
 
-**Implemented (option 2, opt-in):** `mcp_calc_server.py` now accepts `--transport {stdio,sse,http}`, `--host`, and `--port`. The loader in `app.py` (`_load_mcp_servers` / `_build_http_mcp`) now supports HTTP-based (`url` + `transport`) MCP configs via `MCPSse` / `MCPStreamableHttp`. See `mcp_servers.json.example` for a `calc-stats-http` example. Stdio remains the default for backward compatibility. To fully avoid stdio threading issues, run the calc server with `--transport sse` (or `http`) as a long-lived process and point the config at its URL.
+The old approach used `AnyAgentLib.create()` (sync) which calls `run_async_in_sync(create_async())` — creating one loop for creation, then `agent.run()` (sync) calls `run_async_in_sync(run_async())` — creating ANOTHER loop for execution. The MCP connections died between the two loops.
 
-### Priority 2: Fix Agent Cleanup — IMPLEMENTED
+### Priority 2: Fix Agent Cleanup — IMPROVED
 
-The `generator didn't stop after athrow()` warning means the any-agent's async generator doesn't clean up properly. This could be a bug in `any-agent` or in how `run_async_in_sync` is used. Consider:
-- Catching `GeneratorExit` explicitly in cleanup — **done** in `AnyAgentOrchestrator._cleanup`.
-- Using a short timeout when awaiting `cleanup_async()` — **done** (`CLEANUP_TIMEOUT_SECONDS = 30`).
-- Killing orphaned MCP child processes after agent completion — **done** in `_kill_orphaned_mcp_children` (requires `psutil`; best-effort, skipped if unavailable).
+- Using native async `_cleanup_async` method (no more `run_async_in_sync`)
+- `CLEANUP_TIMEOUT_SECONDS = 30`
+- Swallows `GeneratorExit`, `StopAsyncIteration`, and cancel-scope `RuntimeError`s
+- Kills orphaned MCP child processes after cleanup via `_kill_orphaned_mcp_children`
+- Logs a warning if cleanup takes > 5 seconds
 
-### Priority 3: Add Tool-Availability Logging — IMPLEMENTED
+### Priority 3: Tool-Availability Logging — FIXED
 
-Before invoking the agent, log which tools are actually registered/available. If the MCP server crashed, log a warning so it's clear to the user/developer that tools aren't available for this run. **Done** in `AnyAgentOrchestrator._log_available_tools`, called after agent creation.
+`_log_available_tools` now correctly checks `agent._tools` (was incorrectly checking `agent.tools` which doesn't exist). Logs the names of all registered tools so operators can see what's available.
 
-### Priority 4: Add Retry for MCP Server Startup — IMPLEMENTED
+### Priority 4: MCP Startup Retry — KEPT
 
-If the MCP server connection fails, try restarting it once before proceeding without tools. **Done** in `AnyAgentOrchestrator._create_agent`: on an MCP-detected startup failure it retries once, then falls back to a tools-less run (still warning the operator) so the agent still responds.
+`_create_agent_async` retries once on MCP startup failures, then falls back to a tools-less run so the agent can still respond.
+
+### Priority 5: Recursion Limit & Timeout — NEW
+
+- `MAX_AGENT_RECURSION_LIMIT = 10` — passed to LangGraph via `agent_args={"recursion_limit": 10}`. Limits model+tool iterations to 10 round-trips.
+- `AGENT_RUN_TIMEOUT_SECONDS = 180` — hard wall-clock timeout on the entire agent execution via `asyncio.wait_for`.
+- Logs a warning if the agent takes > 80% of the timeout.
+
+These prevent the model from looping indefinitely when tools fail.
