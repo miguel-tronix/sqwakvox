@@ -24,7 +24,7 @@ jobs:
       - run: uv sync --group dev
 
       - name: Lint
-        run: uv ruff check src/
+        run: uv run ruff check src/
 
       - name: Type check
         run: .venv/bin/python -m mypy src/
