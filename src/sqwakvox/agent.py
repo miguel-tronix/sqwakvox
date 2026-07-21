@@ -236,7 +236,14 @@ class AnyAgentOrchestrator:
                 timeout=AGENT_RUN_TIMEOUT_SECONDS,
             )
             elapsed = time.monotonic() - start_time
-            text = response.choices[0].message.content or ""
+            if hasattr(response, 'choices'):
+                text = response.choices[0].message.content or ""
+            else:
+                chunks = []
+                async for chunk in response:
+                    if chunk.choices and chunk.choices[0].delta.content:
+                        chunks.append(chunk.choices[0].delta.content)
+                text = "".join(chunks)
             logger.info(
                 "Direct model call complete — response length: %d chars, elapsed: %.1fs",
                 len(text),
