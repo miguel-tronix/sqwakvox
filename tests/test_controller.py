@@ -173,8 +173,8 @@ def test_app_controller_execute_agent_blocked(
         data_store={}
     )
 
-    assert result.is_blocked is False
-    assert result.success is True
+    assert result.is_blocked is True
+    assert result.success is False
 
 
 @patch("sqwakvox.controller.AnyGuardrailValidator")

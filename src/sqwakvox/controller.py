@@ -9,6 +9,7 @@ from typing import Any
 from docling.document_converter import DocumentConverter
 
 from sqwakvox.guardrails import (
+    AnyGuardrailValidator,
     AuditLogger,
     FinancialRuleEngine,
     PIIRedactor,
@@ -215,16 +216,15 @@ class AppController:
         result = AgentResult()
 
         # 1. Mozilla any-guardrail Input Prompt Verification
-        # DISABLED for debugging agent loop
-        is_query_safe = True  # AnyGuardrailValidator.validate_prompt(user_query)
+        is_query_safe = AnyGuardrailValidator.validate_prompt(user_query)
         if not is_query_safe:
             result.is_blocked = True
             result.blocked_reason = "Mozilla any-guardrail prompt safety violation"
             result.success = False
             return result
 
-        # 2. Local PII Redaction - DISABLED for debugging
-        redacted_query = user_query  # PIIRedactor.redact_text(user_query)
+        # 2. Local PII Redaction
+        redacted_query = PIIRedactor.redact_text(user_query)
         if redacted_query != user_query:
             result.pii_redacted_query = True
 

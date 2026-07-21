@@ -227,7 +227,7 @@ class AnyAgentOrchestrator:
                 timeout=AGENT_RUN_TIMEOUT_SECONDS,
             )
             elapsed = time.monotonic() - start_time
-            if hasattr(response, 'choices'):
+            if hasattr(response, "choices"):
                 text = response.choices[0].message.content or ""
             else:
                 chunks = []
