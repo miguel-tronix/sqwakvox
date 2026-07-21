@@ -609,10 +609,7 @@ class SqwakvoxApp(App[None]):
                 self.write_chat_message(msg, persist=True)
                 self.write_agent_response(msg)
             else:
-                msg = (
-                    f"  [red]✗[/red] Column '{col_name}' "
-                    f"expected {expected} but got {actual:.2f}"
-                )
+                msg = f"  [red]✗[/red] Column '{col_name}' expected {expected} but got {actual:.2f}"
                 self.write_chat_message(msg, persist=True)
                 self.write_agent_response(msg)
 
@@ -739,9 +736,7 @@ class SqwakvoxApp(App[None]):
             "[italic dim]Agent is thinking (via LangChain)...[/italic dim]",
             persist=False,
         )
-        self.write_agent_response(
-            "[italic dim]Agent is thinking (via LangChain)...[/italic dim]"
-        )
+        self.write_agent_response("[italic dim]Agent is thinking (via LangChain)...[/italic dim]")
 
         self.run_worker(
             lambda: self._execute_agent_background(selected_model, api_key, user_query),

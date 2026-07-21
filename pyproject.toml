@@ -28,6 +28,7 @@ dependencies = [
     "google-genai>=2.6.0",
     "mcp>=1.0.0",
     "mypy>=2.1.0",
+    "pytest>=9.0.3",
 ]
 
 [dependency-groups]
@@ -76,7 +77,7 @@ ignore = []
 known-first-party = ["sqwakvox"]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 strict = true
 warn_unreachable = true
 pretty = true
@@ -88,5 +89,7 @@ module = [
     "docling.*",
     "any_guardrail.*",
     "textual.*",
+    "numpy.*",
+    "mcp.*",
 ]
 ignore_missing_imports = true
