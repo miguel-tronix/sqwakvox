@@ -7,7 +7,7 @@ import signal
 import threading
 import time
 from collections.abc import Generator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 
 from any_agent import AgentConfig, AgentFramework, AnyAgent
 from any_agent import AnyAgent as AnyAgentLib
@@ -116,23 +116,15 @@ class AnyAgentOrchestrator:
                 if pending:
                     for task in pending:
                         task.cancel()
-                    loop.run_until_complete(
-                        asyncio.gather(*pending, return_exceptions=True)
-                    )
+                    loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
             except Exception:
                 pass
-            try:
+            with suppress(Exception):
                 loop.run_until_complete(loop.shutdown_asyncgens())
-            except Exception:
-                pass
-            try:
+            with suppress(Exception):
                 loop.close()
-            except Exception:
-                pass
-            try:
+            with suppress(Exception):
                 asyncio.set_event_loop(None)
-            except Exception:
-                pass
         if error is not None:
             raise error
         return result  # type: ignore[return-value]
@@ -177,8 +169,7 @@ class AnyAgentOrchestrator:
             elapsed = time.monotonic() - start_time
             response = str(trace.final_output)
             logger.info(
-                "Agent execution complete — response length: %d chars, "
-                "elapsed: %.1fs, spans: %d",
+                "Agent execution complete — response length: %d chars, elapsed: %.1fs, spans: %d",
                 len(response),
                 elapsed,
                 len(trace.spans),
@@ -195,7 +186,7 @@ class AnyAgentOrchestrator:
                     response[:200],
                 )
             return response
-        except (asyncio.TimeoutError, TimeoutError):
+        except TimeoutError:
             elapsed = time.monotonic() - start_time
             logger.error(
                 "Agent execution TIMED OUT after %.1fs (limit %ss).",
@@ -243,14 +234,16 @@ class AnyAgentOrchestrator:
                 elapsed,
             )
             return text
-        except (asyncio.TimeoutError, TimeoutError):
+        except TimeoutError:
             elapsed = time.monotonic() - start_time
             logger.error("Direct model call TIMED OUT after %.1fs", elapsed)
             raise
 
     @classmethod
     async def _create_agent_async(
-        cls, config: AgentConfig, mcp_servers: list[MCPParams],
+        cls,
+        config: AgentConfig,
+        mcp_servers: list[MCPParams],
     ) -> tuple[AnyAgent, list[MCPParams]]:
         """Create the agent with retry logic for MCP startup failures.
 
@@ -343,9 +336,7 @@ class AnyAgentOrchestrator:
         """Clean up the agent, tolerating cancel-scope / generator warnings."""
         cleanup_start = time.monotonic()
         try:
-            await asyncio.wait_for(
-                agent.cleanup_async(), timeout=CLEANUP_TIMEOUT_SECONDS
-            )
+            await asyncio.wait_for(agent.cleanup_async(), timeout=CLEANUP_TIMEOUT_SECONDS)
         except (GeneratorExit, StopAsyncIteration):
             logger.debug("Ignoring GeneratorExit/StopAsyncIteration during cleanup.")
         except TimeoutError:

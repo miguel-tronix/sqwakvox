@@ -9,7 +9,6 @@ from typing import Any
 from docling.document_converter import DocumentConverter
 
 from sqwakvox.guardrails import (
-    AnyGuardrailValidator,
     AuditLogger,
     FinancialRuleEngine,
     PIIRedactor,
@@ -270,7 +269,9 @@ class AppController:
                 result.math_discrepancies = verification.discrepancies
 
             result.response = agent_redacted
-            logger.info("Agent result prepared: success=%s, len=%d", result.success, len(result.response))
+            logger.info(
+                "Agent result prepared: success=%s, len=%d", result.success, len(result.response)
+            )
 
             AuditLogger.log(
                 document_id=active_document_name or "unknown",
