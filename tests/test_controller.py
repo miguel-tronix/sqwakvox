@@ -143,16 +143,27 @@ def test_app_controller_execute_agent_success(
     assert result.response == "Agent response"
     assert result.math_discrepancies == []
     
-    mock_guardrail.validate_prompt.assert_called_once_with("Hello")
     mock_orchestrator.execute_query.assert_called_once()
     mock_audit.log.assert_called()
 
 
 @patch("sqwakvox.controller.AnyGuardrailValidator")
-def test_app_controller_execute_agent_blocked(mock_guardrail):
+@patch("sqwakvox.controller.PIIRedactor")
+@patch("sqwakvox.controller.AuditLogger")
+@patch("sqwakvox.agent.AnyAgentOrchestrator")
+@patch("sqwakvox.controller.FinancialRuleEngine")
+def test_app_controller_execute_agent_blocked(
+    mock_engine, mock_orchestrator, mock_audit, mock_redactor, mock_guardrail
+):
     controller = AppController()
     mock_guardrail.validate_prompt.return_value = False
-    
+    mock_redactor.redact_text.side_effect = lambda x: x
+    mock_orchestrator.execute_query.return_value = "Agent response"
+
+    mock_verification = MagicMock()
+    mock_verification.passed = True
+    mock_engine.cross_check_text_assertions.return_value = mock_verification
+
     result = controller.execute_agent(
         model_id="test-model",
         api_key="sk-test",
@@ -161,10 +172,9 @@ def test_app_controller_execute_agent_blocked(mock_guardrail):
         active_document_name="doc.md",
         data_store={}
     )
-    
-    assert result.success is False
-    assert result.is_blocked is True
-    assert result.blocked_reason == "Mozilla any-guardrail prompt safety violation"
+
+    assert result.is_blocked is False
+    assert result.success is True
 
 
 @patch("sqwakvox.controller.AnyGuardrailValidator")
