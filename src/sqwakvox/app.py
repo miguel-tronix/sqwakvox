@@ -763,6 +763,7 @@ class SqwakvoxApp(App[None]):
         )
 
         if result.is_blocked:
+            logger.info("Agent result: blocked — %s", result.blocked_reason)
             self.call_from_thread(self._on_agent_blocked, result.blocked_reason)
             return
 
@@ -772,8 +773,11 @@ class SqwakvoxApp(App[None]):
             self.write_agent_response(pii_msg)
 
         if not result.success:
+            logger.info("Agent result: failure — %s", result.error_message)
             self.call_from_thread(self._on_agent_failure, result.error_message)
             return
+
+        logger.info("Agent result: success — %d chars, delivering to TUI", len(result.response))
 
         if result.math_discrepancies:
             disc_msg = (
