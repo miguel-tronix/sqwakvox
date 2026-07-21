@@ -253,6 +253,8 @@ class AppController:
                 mcp_servers=mcp_servers,
             )
 
+            logger.info("Agent raw response received: %d chars", len(agent_response))
+
             # 3. Output PII Redaction
             agent_redacted = PIIRedactor.redact_text(agent_response)
             if agent_redacted != agent_response:
@@ -267,6 +269,9 @@ class AppController:
                 result.math_discrepancies = verification.discrepancies
 
             result.response = agent_redacted
+            logger.info(
+                "Agent result prepared: success=%s, len=%d", result.success, len(result.response)
+            )
 
             AuditLogger.log(
                 document_id=active_document_name or "unknown",
@@ -276,6 +281,7 @@ class AppController:
             )
 
         except Exception as e:
+            logger.error("Agent execution exception: %s", e, exc_info=True)
             result.success = False
             result.error_message = str(e)
             AuditLogger.log(

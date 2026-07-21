@@ -609,10 +609,7 @@ class SqwakvoxApp(App[None]):
                 self.write_chat_message(msg, persist=True)
                 self.write_agent_response(msg)
             else:
-                msg = (
-                    f"  [red]✗[/red] Column '{col_name}' "
-                    f"expected {expected} but got {actual:.2f}"
-                )
+                msg = f"  [red]✗[/red] Column '{col_name}' expected {expected} but got {actual:.2f}"
                 self.write_chat_message(msg, persist=True)
                 self.write_agent_response(msg)
 
@@ -739,9 +736,7 @@ class SqwakvoxApp(App[None]):
             "[italic dim]Agent is thinking (via LangChain)...[/italic dim]",
             persist=False,
         )
-        self.write_agent_response(
-            "[italic dim]Agent is thinking (via LangChain)...[/italic dim]"
-        )
+        self.write_agent_response("[italic dim]Agent is thinking (via LangChain)...[/italic dim]")
 
         self.run_worker(
             lambda: self._execute_agent_background(selected_model, api_key, user_query),
@@ -763,6 +758,7 @@ class SqwakvoxApp(App[None]):
         )
 
         if result.is_blocked:
+            logger.info("Agent result: blocked — %s", result.blocked_reason)
             self.call_from_thread(self._on_agent_blocked, result.blocked_reason)
             return
 
@@ -772,8 +768,11 @@ class SqwakvoxApp(App[None]):
             self.write_agent_response(pii_msg)
 
         if not result.success:
+            logger.info("Agent result: failure — %s", result.error_message)
             self.call_from_thread(self._on_agent_failure, result.error_message)
             return
+
+        logger.info("Agent result: success — %d chars, delivering to TUI", len(result.response))
 
         if result.math_discrepancies:
             disc_msg = (

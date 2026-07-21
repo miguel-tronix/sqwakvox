@@ -336,11 +336,7 @@ def net_present_value(discount_rate: float, cash_flows: str) -> str:
 
     rate = discount_rate / 100.0
     npv = sum(cf / (1 + rate) ** t for t, cf in enumerate(flows))
-    return (
-        f"NPV: {npv:.4f}\n"
-        f"Discount Rate: {discount_rate}%\n"
-        f"Periods: {len(flows)}"
-    )
+    return f"NPV: {npv:.4f}\nDiscount Rate: {discount_rate}%\nPeriods: {len(flows)}"
 
 
 # ---------------------------------------------------------------------------
