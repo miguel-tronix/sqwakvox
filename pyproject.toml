@@ -45,7 +45,8 @@ packages = ["src/sqwakvox"]
 
 [project.scripts]
 sqwakvox = "sqwakvox.__main__:main"
-
+[tool.uv]
+cache-dir="/home2/app2/uv"
 [tool.ruff]
 target-version = "py311"
 line-length = 100

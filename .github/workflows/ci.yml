@@ -27,7 +27,7 @@ jobs:
         run: uv run ruff check src/
 
       - name: Type check
-        run: .venv/bin/python -m mypy src/
+        run: uv run mypy src/
 
       - name: Test
-        run: .venv/bin/python -m pytest tests/
+        run: uv run pytest tests/
