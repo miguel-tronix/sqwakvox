@@ -1,4 +1,4 @@
-import pytest
+from sqwakvox.controller import AppController
 from sqwakvox.guardrails import (
     FinancialRuleEngine,
     FinancialValue,
@@ -6,11 +6,10 @@ from sqwakvox.guardrails import (
     detect_unit,
     parse_financial_value,
 )
-from sqwakvox.controller import AppController
 from sqwakvox.models import StructuredDocument, TableData
 
 
-def test_detect_unit():
+def test_detect_unit() -> None:
     assert detect_unit("$1,000.50") == "$"
     assert detect_unit("1,000 USD") == "$"
     assert detect_unit("100 dollars") == "$"
@@ -20,7 +19,7 @@ def test_detect_unit():
     assert detect_unit("1000.50") == "number"
 
 
-def test_parse_financial_value():
+def test_parse_financial_value() -> None:
     fv_curr = parse_financial_value("$1,000.50")
     assert fv_curr == 1000.50
     assert fv_curr.unit == "$"
@@ -40,7 +39,7 @@ def test_parse_financial_value():
     assert fv_small_curr.unit == "$"
 
 
-def test_are_units_compatible():
+def test_are_units_compatible() -> None:
     assert are_units_compatible("$", "$") is True
     assert are_units_compatible("%", "%") is True
     assert are_units_compatible("number", "number") is True
@@ -53,7 +52,7 @@ def test_are_units_compatible():
     assert are_units_compatible("USD", "percent") is False
 
 
-def test_verify_column_sum_apples_to_apples():
+def test_verify_column_sum_apples_to_apples() -> None:
     # Dollars only
     val_100_dollars = FinancialValue(100.0, unit="$")
     val_150_dollars = FinancialValue(150.0, unit="$")
@@ -78,7 +77,7 @@ def test_verify_column_sum_apples_to_apples():
     ) is False
 
 
-def test_cross_check_text_assertions_unit_awareness():
+def test_cross_check_text_assertions_unit_awareness() -> None:
     data_store = {
         "Revenue": FinancialValue(1000.50, unit="$", raw_str="$1,000.50"),
         "Growth": FinancialValue(0.15, unit="%", raw_str="15%"),
@@ -106,7 +105,7 @@ def test_cross_check_text_assertions_unit_awareness():
     assert any("Unit mismatch" in d for d in res_unit_mismatch_revenue.discrepancies)
 
 
-def test_cross_validate_table_mixed_units():
+def test_cross_validate_table_mixed_units() -> None:
     controller = AppController()
 
     doc_mixed = StructuredDocument(
@@ -126,6 +125,6 @@ def test_cross_validate_table_mixed_units():
 
     results = controller.cross_validate(doc_mixed)
     assert len(results) == 1
-    col_name, expected, actual, is_valid = results[0]
+    col_name, _expected, _actual, is_valid = results[0]
     assert col_name == "Financials"
     assert is_valid is False

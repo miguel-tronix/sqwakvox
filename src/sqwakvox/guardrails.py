@@ -4,6 +4,7 @@ import hashlib
 import json
 import logging
 import re
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, ClassVar
@@ -24,9 +25,7 @@ class FinancialValue(float):
     unit: str
     raw_str: str
 
-    def __new__(
-        cls, value: float | int, unit: str = "number", raw_str: str = ""
-    ) -> FinancialValue:
+    def __new__(cls, value: float | int, unit: str = "number", raw_str: str = "") -> FinancialValue:
         instance = super().__new__(cls, float(value))
         instance.unit = unit
         instance.raw_str = raw_str or str(value)
@@ -63,15 +62,10 @@ def are_units_compatible(unit1: str, unit2: str) -> bool:
     u1_is_pct = unit1.lower() in percent_units
     u2_is_pct = unit2.lower() in percent_units
 
-    if (u1_is_curr and u2_is_pct) or (u1_is_pct and u2_is_curr):
-        return False
-
-    return True
+    return not ((u1_is_curr and u2_is_pct) or (u1_is_pct and u2_is_curr))
 
 
-def parse_financial_value(
-    text: str, default_unit: str = "number"
-) -> FinancialValue | None:
+def parse_financial_value(text: str, default_unit: str = "number") -> FinancialValue | None:
     """Parse a cell or text assertion into a FinancialValue with unit awareness."""
     if not text or not text.strip():
         return None
@@ -92,13 +86,12 @@ def parse_financial_value(
 
     try:
         val = float(cleaned)
-        if unit == "%":
-            if "%" in raw_str or re.search(
-                r"\b(percent|percentage|pct)\b", raw_str, re.I
-            ):
-                val /= 100.0
-            elif val > 1.0 and default_unit == "%":
-                val /= 100.0
+        if unit == "%" and (
+            "%" in raw_str
+            or re.search(r"\b(percent|percentage|pct)\b", raw_str, re.I)
+            or (val > 1.0 and default_unit == "%")
+        ):
+            val /= 100.0
         return FinancialValue(val, unit=unit, raw_str=raw_str)
     except ValueError:
         return None
@@ -107,16 +100,14 @@ def parse_financial_value(
 class FinancialRuleEngine:
     @staticmethod
     def verify_column_sum(
-        values: list[float | FinancialValue],
+        values: Sequence[float | FinancialValue],
         expected_total: float | FinancialValue,
         tolerance: float = 0.01,
     ) -> bool:
         if not values:
             return False
 
-        fv_values = [
-            v if isinstance(v, FinancialValue) else FinancialValue(v) for v in values
-        ]
+        fv_values = [v if isinstance(v, FinancialValue) else FinancialValue(v) for v in values]
         fv_expected = (
             expected_total
             if isinstance(expected_total, FinancialValue)
@@ -124,7 +115,7 @@ class FinancialRuleEngine:
         )
 
         # Reject summation if column contains mismatched units (e.g. % mixed with $)
-        all_items = fv_values + [fv_expected]
+        all_items = [*fv_values, fv_expected]
         units = [item.unit for item in all_items if item.unit != "number"]
         if units:
             first_unit = units[0]
@@ -143,14 +134,17 @@ class FinancialRuleEngine:
 
     @staticmethod
     def cross_check_text_assertions(
-        response_text: str, data_store: dict[str, float | FinancialValue]
+        response_text: str, data_store: Mapping[str, float | FinancialValue]
     ) -> VerificationResult:
         discrepancies: list[str] = []
         if not response_text or not data_store:
             return VerificationResult(passed=True, discrepancies=[])
 
         extracted: list[tuple[int, FinancialValue]] = []
-        pattern = r"(?:[\$€£¥]\s*)?\b\d+(?:,\d{3})*(?:\.\d+)?\s*(?:%|\b(?:percent|percentage|pct|USD|EUR|GBP|dollars?)\b)?"
+        pattern = (
+            r"(?:[\$€£¥]\s*)?\b\d+(?:,\d{3})*(?:\.\d+)?"
+            r"\s*(?:%|\b(?:percent|percentage|pct|USD|EUR|GBP|dollars?)\b)?"
+        )
 
         for m in re.finditer(pattern, response_text, re.IGNORECASE):
             raw_match = m.group()
@@ -191,14 +185,16 @@ class FinancialRuleEngine:
 
             if not are_units_compatible(asserted_fv.unit, known_fv.unit):
                 discrepancies.append(
-                    f"Unit mismatch for '{label}': asserted '{asserted_fv.raw_str}' (unit '{asserted_fv.unit}') "
-                    f"does not match expected unit '{known_fv.unit}'"
+                    f"Unit mismatch for '{label}': asserted '{asserted_fv.raw_str}' "
+                    f"(unit '{asserted_fv.unit}') does not match expected unit '{known_fv.unit}'"
                 )
                 continue
 
             if abs(asserted_fv - known_fv) > 0.01:
+                expected_repr = known_fv.raw_str or known_fv
                 discrepancies.append(
-                    f"LLM value {asserted_fv.raw_str} does not match expected {known_fv.raw_str or known_fv} for '{label}'"
+                    f"LLM value {asserted_fv.raw_str} does not match expected "
+                    f"{expected_repr} for '{label}'"
                 )
 
         return VerificationResult(

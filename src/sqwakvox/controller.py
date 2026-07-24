@@ -1,7 +1,7 @@
 import json
 import logging
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -185,9 +185,7 @@ class AppController:
         for table in structured_doc.tables:
             for col_idx in range(len(table.headers)):
                 values: list[FinancialValue] = []
-                col_header = (
-                    table.headers[col_idx] if col_idx < len(table.headers) else ""
-                )
+                col_header = table.headers[col_idx] if col_idx < len(table.headers) else ""
                 col_unit = detect_unit(col_header)
 
                 for row in table.rows:
@@ -220,7 +218,7 @@ class AppController:
         user_query: str,
         doc_context: str,
         active_document_name: str,
-        data_store: dict[str, float],
+        data_store: Mapping[str, float | FinancialValue],
         mcp_servers: list[Any] | None = None,
     ) -> AgentResult:
         result = AgentResult()
