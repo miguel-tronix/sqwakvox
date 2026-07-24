@@ -12,11 +12,14 @@ from __future__ import annotations
 import ast
 import math
 import operator as op
+import time
 from collections import Counter
 from collections.abc import Callable
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
+
+from sqwakvox.telemetry import get_telemetry, trace_span
 
 mcp = FastMCP("sqwakvox-calc-stats")
 
@@ -115,6 +118,31 @@ def safe_eval(expression: str) -> Any:
     return _eval_node(tree)
 
 
+def _trace_tool(tool_name: str, fn: Callable[[], str]) -> str:
+    tm = get_telemetry()
+    start = time.monotonic()
+    with trace_span(f"sqwakvox.mcp_tool.{tool_name}", {"tool": tool_name}) as span:
+        try:
+            result = fn()
+            elapsed = time.monotonic() - start
+            success = not result.startswith("Error:")
+            span.set_attribute("success", success)
+            span.set_attribute("duration_sec", elapsed)
+            status_str = "success" if success else "error"
+            if tm.mcp_tool_counter:
+                tm.mcp_tool_counter.add(1, {"tool": tool_name, "status": status_str})
+            if tm.mcp_tool_duration:
+                tm.mcp_tool_duration.record(elapsed, {"tool": tool_name})
+            return result
+        except Exception:
+            elapsed = time.monotonic() - start
+            if tm.mcp_tool_counter:
+                tm.mcp_tool_counter.add(1, {"tool": tool_name, "status": "exception"})
+            if tm.mcp_tool_duration:
+                tm.mcp_tool_duration.record(elapsed, {"tool": tool_name})
+            raise
+
+
 # ---------------------------------------------------------------------------
 # MCP Tools
 # ---------------------------------------------------------------------------
@@ -131,14 +159,16 @@ def safe_eval(expression: str) -> Any:
 )
 def calculator(expression: str) -> str:
     """Evaluate a mathematical expression safely."""
-    try:
-        result = safe_eval(expression)
-        # Format nicely — ints stay ints, floats get reasonable precision
-        if isinstance(result, float):
-            return f"{result:.10g}"
-        return str(result)
-    except Exception as exc:
-        return f"Error: {exc}"
+    def _run() -> str:
+        try:
+            result = safe_eval(expression)
+            if isinstance(result, float):
+                return f"{result:.10g}"
+            return str(result)
+        except Exception as exc:
+            return f"Error: {exc}"
+
+    return _trace_tool("calculator", _run)
 
 
 @mcp.tool(
@@ -150,51 +180,50 @@ def calculator(expression: str) -> str:
     ),
 )
 def stats_summary(numbers: str) -> str:
-    """Compute full stats for a comma/space-separated list of numbers.
+    """Compute full stats for a comma/space-separated list of numbers."""
+    def _run() -> str:
+        try:
+            values = _parse_number_list(numbers)
+        except ValueError as exc:
+            return f"Error: {exc}"
 
-    Accepts formats like: "1, 2, 3, 4" or "1 2 3 4" or "1,2,3,4"
-    """
-    try:
-        values = _parse_number_list(numbers)
-    except ValueError as exc:
-        return f"Error: {exc}"
+        n = len(values)
+        if n == 0:
+            return "Error: no numbers provided"
 
-    n = len(values)
-    if n == 0:
-        return "Error: no numbers provided"
+        total = sum(values)
+        mean = total / n
+        sorted_vals = sorted(values)
 
-    total = sum(values)
-    mean = total / n
-    sorted_vals = sorted(values)
+        if n % 2 == 1:
+            median = sorted_vals[n // 2]
+        else:
+            median = (sorted_vals[n // 2 - 1] + sorted_vals[n // 2]) / 2
 
-    # median
-    if n % 2 == 1:
-        median = sorted_vals[n // 2]
-    else:
-        median = (sorted_vals[n // 2 - 1] + sorted_vals[n // 2]) / 2
+        counts = Counter(values)
+        max_count = max(counts.values())
+        modes = sorted(k for k, v in counts.items() if v == max_count)
+        mode_str = (
+            ", ".join(f"{m:.10g}" for m in modes) if len(modes) < len(values) else "none"
+        )
 
-    # mode
-    counts = Counter(values)
-    max_count = max(counts.values())
-    modes = sorted(k for k, v in counts.items() if v == max_count)
-    mode_str = ", ".join(f"{m:.10g}" for m in modes) if len(modes) < len(values) else "none"
+        variance = sum((x - mean) ** 2 for x in values) / n
+        std_dev = math.sqrt(variance)
 
-    # variance & std dev (population)
-    variance = sum((x - mean) ** 2 for x in values) / n
-    std_dev = math.sqrt(variance)
+        return (
+            f"Count: {n}\n"
+            f"Sum: {total:.10g}\n"
+            f"Mean: {mean:.10g}\n"
+            f"Median: {median:.10g}\n"
+            f"Min: {sorted_vals[0]:.10g}\n"
+            f"Max: {sorted_vals[-1]:.10g}\n"
+            f"Range: {sorted_vals[-1] - sorted_vals[0]:.10g}\n"
+            f"Variance (population): {variance:.10g}\n"
+            f"Std Dev (population): {std_dev:.10g}\n"
+            f"Mode(s): {mode_str}"
+        )
 
-    return (
-        f"Count: {n}\n"
-        f"Sum: {total:.10g}\n"
-        f"Mean: {mean:.10g}\n"
-        f"Median: {median:.10g}\n"
-        f"Min: {sorted_vals[0]:.10g}\n"
-        f"Max: {sorted_vals[-1]:.10g}\n"
-        f"Range: {sorted_vals[-1] - sorted_vals[0]:.10g}\n"
-        f"Variance (population): {variance:.10g}\n"
-        f"Std Dev (population): {std_dev:.10g}\n"
-        f"Mode(s): {mode_str}"
-    )
+    return _trace_tool("stats_summary", _run)
 
 
 @mcp.tool(
@@ -202,13 +231,16 @@ def stats_summary(numbers: str) -> str:
     description="Calculate the arithmetic mean (average) of a list of numbers.",
 )
 def stats_mean(numbers: str) -> str:
-    try:
-        values = _parse_number_list(numbers)
-    except ValueError as exc:
-        return f"Error: {exc}"
-    if not values:
-        return "Error: no numbers provided"
-    return f"{sum(values) / len(values):.10g}"
+    def _run() -> str:
+        try:
+            values = _parse_number_list(numbers)
+        except ValueError as exc:
+            return f"Error: {exc}"
+        if not values:
+            return "Error: no numbers provided"
+        return f"{sum(values) / len(values):.10g}"
+
+    return _trace_tool("stats_mean", _run)
 
 
 @mcp.tool(
@@ -216,17 +248,20 @@ def stats_mean(numbers: str) -> str:
     description="Calculate the median of a list of numbers.",
 )
 def stats_median(numbers: str) -> str:
-    try:
-        values = _parse_number_list(numbers)
-    except ValueError as exc:
-        return f"Error: {exc}"
-    if not values:
-        return "Error: no numbers provided"
-    n = len(values)
-    sv = sorted(values)
-    if n % 2 == 1:
-        return f"{sv[n // 2]:.10g}"
-    return f"{(sv[n // 2 - 1] + sv[n // 2]) / 2:.10g}"
+    def _run() -> str:
+        try:
+            values = _parse_number_list(numbers)
+        except ValueError as exc:
+            return f"Error: {exc}"
+        if not values:
+            return "Error: no numbers provided"
+        n = len(values)
+        sv = sorted(values)
+        if n % 2 == 1:
+            return f"{sv[n // 2]:.10g}"
+        return f"{(sv[n // 2 - 1] + sv[n // 2]) / 2:.10g}"
+
+    return _trace_tool("stats_median", _run)
 
 
 @mcp.tool(
@@ -234,15 +269,18 @@ def stats_median(numbers: str) -> str:
     description="Calculate the population standard deviation of a list of numbers.",
 )
 def stats_stddev(numbers: str) -> str:
-    try:
-        values = _parse_number_list(numbers)
-    except ValueError as exc:
-        return f"Error: {exc}"
-    if not values:
-        return "Error: no numbers provided"
-    mean = sum(values) / len(values)
-    var = sum((x - mean) ** 2 for x in values) / len(values)
-    return f"{math.sqrt(var):.10g}"
+    def _run() -> str:
+        try:
+            values = _parse_number_list(numbers)
+        except ValueError as exc:
+            return f"Error: {exc}"
+        if not values:
+            return "Error: no numbers provided"
+        mean = sum(values) / len(values)
+        var = sum((x - mean) ** 2 for x in values) / len(values)
+        return f"{math.sqrt(var):.10g}"
+
+    return _trace_tool("stats_stddev", _run)
 
 
 @mcp.tool(
@@ -250,14 +288,17 @@ def stats_stddev(numbers: str) -> str:
     description="Calculate the population variance of a list of numbers.",
 )
 def stats_variance(numbers: str) -> str:
-    try:
-        values = _parse_number_list(numbers)
-    except ValueError as exc:
-        return f"Error: {exc}"
-    if not values:
-        return "Error: no numbers provided"
-    mean = sum(values) / len(values)
-    return f"{sum((x - mean) ** 2 for x in values) / len(values):.10g}"
+    def _run() -> str:
+        try:
+            values = _parse_number_list(numbers)
+        except ValueError as exc:
+            return f"Error: {exc}"
+        if not values:
+            return "Error: no numbers provided"
+        mean = sum(values) / len(values)
+        return f"{sum((x - mean) ** 2 for x in values) / len(values):.10g}"
+
+    return _trace_tool("stats_variance", _run)
 
 
 @mcp.tool(
@@ -265,13 +306,16 @@ def stats_variance(numbers: str) -> str:
     description="Return the minimum and maximum values from a list of numbers.",
 )
 def stats_minmax(numbers: str) -> str:
-    try:
-        values = _parse_number_list(numbers)
-    except ValueError as exc:
-        return f"Error: {exc}"
-    if not values:
-        return "Error: no numbers provided"
-    return f"Min: {min(values):.10g}, Max: {max(values):.10g}"
+    def _run() -> str:
+        try:
+            values = _parse_number_list(numbers)
+        except ValueError as exc:
+            return f"Error: {exc}"
+        if not values:
+            return "Error: no numbers provided"
+        return f"Min: {min(values):.10g}, Max: {max(values):.10g}"
+
+    return _trace_tool("stats_minmax", _run)
 
 
 # ---------------------------------------------------------------------------
@@ -294,15 +338,18 @@ def compound_interest(
     years: float,
     compounds_per_year: int = 12,
 ) -> str:
-    rate = annual_rate / 100.0
-    future_value = principal * (1 + rate / compounds_per_year) ** (compounds_per_year * years)
-    total_interest = future_value - principal
-    return (
-        f"Future Value: {future_value:.2f}\n"
-        f"Total Interest Earned: {total_interest:.2f}\n"
-        f"Annual Rate: {annual_rate}%\n"
-        f"Compounding: {compounds_per_year}x per year for {years} years"
-    )
+    def _run() -> str:
+        rate = annual_rate / 100.0
+        fv = principal * (1 + rate / compounds_per_year) ** (compounds_per_year * years)
+        total_interest = fv - principal
+        return (
+            f"Future Value: {fv:.2f}\n"
+            f"Total Interest Earned: {total_interest:.2f}\n"
+            f"Annual Rate: {annual_rate}%\n"
+            f"Compounding: {compounds_per_year}x per year for {years} years"
+        )
+
+    return _trace_tool("compound_interest", _run)
 
 
 @mcp.tool(
@@ -310,11 +357,14 @@ def compound_interest(
     description="Calculate the percentage change from old_value to new_value.",
 )
 def percentage_change(old_value: float, new_value: float) -> str:
-    if old_value == 0:
-        return "Error: old_value cannot be zero (infinite percentage change)"
-    change = ((new_value - old_value) / abs(old_value)) * 100.0
-    direction = "increase" if change >= 0 else "decrease"
-    return f"{change:.4f}% {direction} (from {old_value:.10g} to {new_value:.10g})"
+    def _run() -> str:
+        if old_value == 0:
+            return "Error: old_value cannot be zero (infinite percentage change)"
+        change = ((new_value - old_value) / abs(old_value)) * 100.0
+        direction = "increase" if change >= 0 else "decrease"
+        return f"{change:.4f}% {direction} (from {old_value:.10g} to {new_value:.10g})"
+
+    return _trace_tool("percentage_change", _run)
 
 
 @mcp.tool(
@@ -327,16 +377,19 @@ def percentage_change(old_value: float, new_value: float) -> str:
     ),
 )
 def net_present_value(discount_rate: float, cash_flows: str) -> str:
-    try:
-        flows = _parse_number_list(cash_flows)
-    except ValueError as exc:
-        return f"Error parsing cash flows: {exc}"
-    if not flows:
-        return "Error: no cash flows provided"
+    def _run() -> str:
+        try:
+            flows = _parse_number_list(cash_flows)
+        except ValueError as exc:
+            return f"Error parsing cash flows: {exc}"
+        if not flows:
+            return "Error: no cash flows provided"
 
-    rate = discount_rate / 100.0
-    npv = sum(cf / (1 + rate) ** t for t, cf in enumerate(flows))
-    return f"NPV: {npv:.4f}\nDiscount Rate: {discount_rate}%\nPeriods: {len(flows)}"
+        rate = discount_rate / 100.0
+        npv = sum(cf / (1 + rate) ** t for t, cf in enumerate(flows))
+        return f"NPV: {npv:.4f}\nDiscount Rate: {discount_rate}%\nPeriods: {len(flows)}"
+
+    return _trace_tool("net_present_value", _run)
 
 
 # ---------------------------------------------------------------------------

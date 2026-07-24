@@ -1,6 +1,8 @@
+import atexit
 import logging
 
 from sqwakvox.app import SqwakvoxApp
+from sqwakvox.telemetry import setup_telemetry, shutdown_telemetry
 
 
 def _setup_chat_logging() -> None:
@@ -41,6 +43,8 @@ def main() -> None:
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
     _setup_chat_logging()
+    setup_telemetry()
+    atexit.register(shutdown_telemetry)
     logging.info("Sqwakvox application starting...")
     from sqwakvox.controller import AppController
 

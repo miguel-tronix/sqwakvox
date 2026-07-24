@@ -22,6 +22,7 @@ Sqwakvox is a **Textual TUI** app that ingests financial documents (PDFs) via **
 - **Input Guardrails** — Mozilla `any-guardrail` (INJECGUARD) blocks prompt injection
 - **PII Redaction** — Automatic redaction of SSNs, credit cards, bank accounts, emails
 - **Financial Cross-Validation** — Extracts labelled numeric values from tables and verifies LLM assertions against them
+- **OpenTelemetry Instrumentation** — Comprehensive tracing and metric instrumentation across document ingestion, agent reasoning, guardrails, and MCP calculations
 - **Unicode Table Rendering** — Double-lined borders, auto-alignment, numeric column sparklines
 - **Audit Logging** — JSONL audit trail at `~/.gemini/antigravity/sqwakvox/audit_log.jsonl`
 
@@ -96,6 +97,41 @@ API keys are entered at runtime in the TUI sidebar (never stored). Supported env
 2. **PII Redaction** — SSNs, credit cards, IBANs, and emails are automatically redacted from both queries and agent responses
 3. **Numerical Cross-Validation** — The `FinancialRuleEngine` parses labelled figures from document tables and cross-checks LLM responses for arithmetic consistency
 4. **Audit Logging** — All operations (ingest, query, response) are timestamped and written to an append-only JSONL audit log
+
+## OpenTelemetry & Performance Monitoring
+
+Sqwakvox includes built-in OpenTelemetry (OTel) instrumentation for distributed tracing and performance metrics collection:
+
+- **Traces & Spans**:
+  - `sqwakvox.document.convert` — Measures Docling PDF/layout parsing latency and document size.
+  - `sqwakvox.agent.execute` / `sqwakvox.agent.direct_model_call` — Tracks end-to-end agent query latency, model execution duration, prompt length, response length, and recursion limits.
+  - `sqwakvox.guardrail.validate_prompt` / `sqwakvox.guardrail.redact_pii` / `sqwakvox.guardrail.cross_check_text_assertions` — Captures guardrail safety checks and latency.
+  - `sqwakvox.cross_validate` — Monitors table numerical column sum verification duration.
+  - `sqwakvox.mcp_tool.<tool_name>` — Measures execution duration and success rates for MCP calculator and statistics tools.
+- **Metrics**:
+  - `sqwakvox.document.ingest.duration` / `sqwakvox.document.ingest.count`
+  - `sqwakvox.agent.execution.duration` / `sqwakvox.agent.execution.count`
+  - `sqwakvox.guardrail.duration` / `sqwakvox.guardrail.violations.count`
+  - `sqwakvox.mcp.tool.duration` / `sqwakvox.mcp.tool.count`
+  - `sqwakvox.active_documents.count`
+
+### Telemetry Configuration
+
+Configure telemetry via environment variables:
+
+```bash
+# Enable/disable telemetry (default: true)
+export SQWAKVOX_TELEMETRY_ENABLED=true
+
+# Choose exporter: otlp, file, console, or none
+export SQWAKVOX_TELEMETRY_EXPORTER=file
+
+# Path for local JSON lines trace log (default: sqwakvox_telemetry.jsonl)
+export SQWAKVOX_TELEMETRY_FILE=sqwakvox_telemetry.jsonl
+
+# OTLP collector endpoint (e.g. Jaeger, OpenTelemetry Collector)
+export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4318"
+```
 
 ## Build With UV
 

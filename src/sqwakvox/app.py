@@ -33,6 +33,7 @@ from sqwakvox.controller import AppController, extract_message
 from sqwakvox.guardrails import AuditLogger
 from sqwakvox.models import ModelProvider, StructuredDocument
 from sqwakvox.renderer import DocumentRenderPane
+from sqwakvox.telemetry import get_telemetry
 
 logger = logging.getLogger(__name__)
 chat_logger = logging.getLogger("sqwakvox.chat")
@@ -673,6 +674,9 @@ class SqwakvoxApp(App[None]):
             self.ingestion_history.append(source)
             history_list = self.query_one("#ingest-history", ListView)
             history_list.append(ListItem(Label(f"• {structured.file_name} (Ready)")))
+            tm = get_telemetry()
+            if tm.active_documents_counter:
+                tm.active_documents_counter.add(1)
 
         self._rebuild_tabs()
         self._switch_to_document(structured, source="ingest")
