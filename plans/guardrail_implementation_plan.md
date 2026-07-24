@@ -130,3 +130,31 @@ Every guardrail invocation produces a standardized audit trail stored in a JSONL
 
 > [!NOTE]
 > **Audit Traceability**: The audit log JSON fields align perfectly with Mozilla's `any-guardrail` default telemetry schemas, making it simple to pipe into larger enterprise dashboard systems or local visualization widgets inside the TUI in the future.
+ 
+ ### Summary of Improvements  ###                                                                                                                                          
+                                                                                                                                                                        
+ 1. Unit-Aware Financial Values (FinancialValue):                                                                                                                       
+     - Implemented FinancialValue(float) subclass in src/sqwakvox/guardrails.py which wraps numeric values with unit metadata ("$", "%", or "number") and raw string    
+       representations while maintaining full backward compatibility as standard Python float instances.                                                                
+                                                                                                                                                                        
+ 2. Unit Detection & Parsing (detect_unit, parse_financial_value):                                                                                                      
+     - Added unit detection and extraction helpers capable of recognizing currency indicators ($, €, £, USD, dollars), percentage indicators (%, percent, percentage,   
+       pct), and unitless numbers across both tabular data and freeform response text.                                                                                  
+                                                                                                                                                                        
+ 3. Unit Compatibility Validation (are_units_compatible):                                                                                                               
+     - Defined rules preventing cross-unit math/comparisons. Incompatible pairs (such as currency $ vs percentage %) are explicitly flagged as unit mismatches.         
+                                                                                                                                                                        
+ 4. Column Summation Guardrails (verify_column_sum & cross_validate):                                                                                                   
+     - verify_column_sum now checks unit compatibility across all column entries and expected totals. Summing mixed unit entries (e.g., adding $100 and 5% to get $105) 
+       is automatically rejected and flagged as invalid.                                                                                                                
+     - Updated cross_validate in AppController (src/sqwakvox/controller.py) to parse table cells and column headers with unit awareness.                                
+                                                                                                                                                                        
+ 5. Text Assertion Cross-Verification (cross_check_text_assertions):                                                                                                    
+     - Text assertion extraction now captures numbers alongside their units and matches assertions to data store labels based on proximity.                             
+     - If an LLM response asserts a percentage value for a currency field (e.g., "Revenue was 15%") or a currency value for a percentage field (e.g., "Growth was       
+       $0.15" when growth is 15%), the guardrail flags a unit mismatch discrepancy.                                                                                     
+                                                                                                                                                                        
+ 6. Automated Testing:                                                                                                                                                  
+     - Added unit test suite in tests/test_guardrails.py covering unit detection, unit parsing, column summation guardrails, and LLM text assertion unit mismatch       
+       detection.                                                                                                                                                       
+
