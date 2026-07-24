@@ -18,35 +18,192 @@ class VerificationResult(BaseModel):
     discrepancies: list[str]
 
 
+class FinancialValue(float):
+    """Float subclass carrying unit metadata and raw string representation."""
+
+    unit: str
+    raw_str: str
+
+    def __new__(
+        cls, value: float | int, unit: str = "number", raw_str: str = ""
+    ) -> FinancialValue:
+        instance = super().__new__(cls, float(value))
+        instance.unit = unit
+        instance.raw_str = raw_str or str(value)
+        return instance
+
+    def __repr__(self) -> str:
+        return f"FinancialValue({super().__repr__()}, unit={self.unit!r})"
+
+
+def detect_unit(text: str) -> str:
+    """Detect financial unit ('$', '%', or 'number') from text context or symbol."""
+    if not text:
+        return "number"
+    cleaned = text.lower()
+    if "%" in cleaned or any(w in cleaned for w in ["percent", "percentage", "pct"]):
+        return "%"
+    if any(sym in text for sym in ["$", "€", "£", "¥"]) or any(
+        w in cleaned for w in ["usd", "eur", "gbp", "cad", "aud", "dollar", "dollars"]
+    ):
+        return "$"
+    return "number"
+
+
+def are_units_compatible(unit1: str, unit2: str) -> bool:
+    """Determine if two unit types are mathematically compatible."""
+    if unit1 == unit2:
+        return True
+
+    currency_units = {"$", "currency", "usd", "eur", "gbp"}
+    percent_units = {"%", "percent", "percentage", "pct"}
+
+    u1_is_curr = unit1.lower() in currency_units
+    u2_is_curr = unit2.lower() in currency_units
+    u1_is_pct = unit1.lower() in percent_units
+    u2_is_pct = unit2.lower() in percent_units
+
+    if (u1_is_curr and u2_is_pct) or (u1_is_pct and u2_is_curr):
+        return False
+
+    return True
+
+
+def parse_financial_value(
+    text: str, default_unit: str = "number"
+) -> FinancialValue | None:
+    """Parse a cell or text assertion into a FinancialValue with unit awareness."""
+    if not text or not text.strip():
+        return None
+
+    raw_str = text.strip()
+    unit = detect_unit(raw_str)
+    if unit == "number" and default_unit != "number":
+        unit = default_unit
+
+    cleaned = re.sub(r"[\$€£¥,]", "", raw_str)
+    cleaned = re.sub(
+        r"\b(USD|EUR|GBP|CAD|AUD|dollars?|cents?|percent|percentage|pct)\b",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = cleaned.replace("%", "").strip()
+
+    try:
+        val = float(cleaned)
+        if unit == "%":
+            if "%" in raw_str or re.search(
+                r"\b(percent|percentage|pct)\b", raw_str, re.I
+            ):
+                val /= 100.0
+            elif val > 1.0 and default_unit == "%":
+                val /= 100.0
+        return FinancialValue(val, unit=unit, raw_str=raw_str)
+    except ValueError:
+        return None
+
+
 class FinancialRuleEngine:
     @staticmethod
     def verify_column_sum(
-        values: list[float], expected_total: float, tolerance: float = 0.01
+        values: list[float | FinancialValue],
+        expected_total: float | FinancialValue,
+        tolerance: float = 0.01,
     ) -> bool:
-        actual_sum = sum(values)
-        return abs(actual_sum - expected_total) <= tolerance
+        if not values:
+            return False
+
+        fv_values = [
+            v if isinstance(v, FinancialValue) else FinancialValue(v) for v in values
+        ]
+        fv_expected = (
+            expected_total
+            if isinstance(expected_total, FinancialValue)
+            else FinancialValue(expected_total)
+        )
+
+        # Reject summation if column contains mismatched units (e.g. % mixed with $)
+        all_items = fv_values + [fv_expected]
+        units = [item.unit for item in all_items if item.unit != "number"]
+        if units:
+            first_unit = units[0]
+            for u in units[1:]:
+                if not are_units_compatible(first_unit, u):
+                    logger.warning(
+                        "verify_column_sum rejected due to unit mismatch: %s vs %s",
+                        first_unit,
+                        u,
+                    )
+                    return False
+
+        actual_sum = sum(float(v) for v in fv_values)
+        expected_val = float(fv_expected)
+        return abs(actual_sum - expected_val) <= tolerance
 
     @staticmethod
     def cross_check_text_assertions(
-        response_text: str, data_store: dict[str, float]
+        response_text: str, data_store: dict[str, float | FinancialValue]
     ) -> VerificationResult:
         discrepancies: list[str] = []
-        numbers_found = re.findall(r"\$?\b\d+(?:\.\d+)?%?\b", response_text)
+        if not response_text or not data_store:
+            return VerificationResult(passed=True, discrepancies=[])
 
-        for num_str in numbers_found:
-            cleaned = num_str.replace("$", "").replace(",", "")
-            is_pct = "%" in num_str
-            val = float(cleaned.replace("%", ""))
-            if is_pct:
-                val /= 100.0
+        extracted: list[tuple[int, FinancialValue]] = []
+        pattern = r"(?:[\$€£¥]\s*)?\b\d+(?:,\d{3})*(?:\.\d+)?\s*(?:%|\b(?:percent|percentage|pct|USD|EUR|GBP|dollars?)\b)?"
 
-            for label, known_val in data_store.items():
-                if abs(val - known_val) > 0.01 and label.lower() in response_text.lower():
-                    discrepancies.append(
-                        f"LLM value {val} does not match expected {known_val} for '{label}'"
-                    )
+        for m in re.finditer(pattern, response_text, re.IGNORECASE):
+            raw_match = m.group()
+            fv = parse_financial_value(raw_match)
+            if fv is not None:
+                extracted.append((m.start(), fv))
 
-        return VerificationResult(passed=len(discrepancies) == 0, discrepancies=discrepancies)
+        for label, known_val in data_store.items():
+            if not label or len(label) <= 1:
+                continue
+
+            label_lower = label.lower()
+            if label_lower not in response_text.lower():
+                continue
+
+            known_fv = (
+                known_val
+                if isinstance(known_val, FinancialValue)
+                else parse_financial_value(str(known_val))
+                or FinancialValue(float(known_val))
+            )
+
+            label_indices = [
+                m.start()
+                for m in re.finditer(re.escape(label_lower), response_text.lower())
+            ]
+            candidates: list[tuple[int, FinancialValue]] = []
+            for pos, fv in extracted:
+                min_dist = min(abs(pos - l_idx) for l_idx in label_indices)
+                if min_dist < 120:
+                    candidates.append((min_dist, fv))
+
+            if not candidates:
+                continue
+
+            candidates.sort(key=lambda x: x[0])
+            _, asserted_fv = candidates[0]
+
+            if not are_units_compatible(asserted_fv.unit, known_fv.unit):
+                discrepancies.append(
+                    f"Unit mismatch for '{label}': asserted '{asserted_fv.raw_str}' (unit '{asserted_fv.unit}') "
+                    f"does not match expected unit '{known_fv.unit}'"
+                )
+                continue
+
+            if abs(asserted_fv - known_fv) > 0.01:
+                discrepancies.append(
+                    f"LLM value {asserted_fv.raw_str} does not match expected {known_fv.raw_str or known_fv} for '{label}'"
+                )
+
+        return VerificationResult(
+            passed=len(discrepancies) == 0, discrepancies=discrepancies
+        )
 
 
 class PIIRedactor:

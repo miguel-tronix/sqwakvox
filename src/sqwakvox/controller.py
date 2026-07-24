@@ -12,7 +12,10 @@ from sqwakvox.guardrails import (
     AnyGuardrailValidator,
     AuditLogger,
     FinancialRuleEngine,
+    FinancialValue,
     PIIRedactor,
+    detect_unit,
+    parse_financial_value,
 )
 from sqwakvox.models import ModelProvider, StructuredDocument, TableData
 
@@ -154,24 +157,22 @@ class AppController:
 
     def build_financial_data_store(
         self, structured_doc: StructuredDocument | None
-    ) -> dict[str, float]:
-        data_store: dict[str, float] = {}
+    ) -> dict[str, FinancialValue]:
+        data_store: dict[str, FinancialValue] = {}
         if not structured_doc:
             return data_store
         for table in structured_doc.tables:
+            col_unit = "number"
+            if table.headers and len(table.headers) >= 2:
+                col_unit = detect_unit(table.headers[1])
+
             for row in table.rows:
                 if len(row) >= 2:
                     label = row[0].strip()
                     for cell in row[1:]:
-                        cleaned = cell.replace("$", "").replace(",", "").replace("%", "").strip()
-                        try:
-                            val = float(cleaned)
-                            if "%" in cell:
-                                val /= 100.0
-                            if label and len(label) > 1:
-                                data_store[label] = val
-                        except ValueError:
-                            continue
+                        fv = parse_financial_value(cell, default_unit=col_unit)
+                        if fv is not None and label and len(label) > 1:
+                            data_store[label] = fv
         return data_store
 
     def cross_validate(
@@ -183,14 +184,21 @@ class AppController:
 
         for table in structured_doc.tables:
             for col_idx in range(len(table.headers)):
-                values: list[float] = []
+                values: list[FinancialValue] = []
+                col_header = (
+                    table.headers[col_idx] if col_idx < len(table.headers) else ""
+                )
+                col_unit = detect_unit(col_header)
+
                 for row in table.rows:
                     if col_idx < len(row):
-                        cleaned = row[col_idx].replace("$", "").replace(",", "").replace("%", "")
-                        try:
-                            values.append(float(cleaned))
-                        except ValueError:
+                        cell = row[col_idx]
+                        fv = parse_financial_value(cell, default_unit=col_unit)
+                        if fv is not None:
+                            values.append(fv)
+                        else:
                             break
+
                 if values and len(values) >= 3:
                     expected = values[-1]
                     actual = values[:-1]
@@ -200,7 +208,9 @@ class AppController:
                         if col_idx < len(table.headers)
                         else f"Column {col_idx}"
                     )
-                    results.append((col_name, expected, sum(actual), is_valid))
+                    expected_val = float(expected)
+                    actual_sum = sum(float(v) for v in actual)
+                    results.append((col_name, expected_val, actual_sum, is_valid))
         return results
 
     def execute_agent(
