@@ -163,13 +163,11 @@ class FinancialRuleEngine:
             known_fv = (
                 known_val
                 if isinstance(known_val, FinancialValue)
-                else parse_financial_value(str(known_val))
-                or FinancialValue(float(known_val))
+                else parse_financial_value(str(known_val)) or FinancialValue(float(known_val))
             )
 
             label_indices = [
-                m.start()
-                for m in re.finditer(re.escape(label_lower), response_text.lower())
+                m.start() for m in re.finditer(re.escape(label_lower), response_text.lower())
             ]
             candidates: list[tuple[int, FinancialValue]] = []
             for pos, fv in extracted:
@@ -197,9 +195,7 @@ class FinancialRuleEngine:
                     f"{expected_repr} for '{label}'"
                 )
 
-        return VerificationResult(
-            passed=len(discrepancies) == 0, discrepancies=discrepancies
-        )
+        return VerificationResult(passed=len(discrepancies) == 0, discrepancies=discrepancies)
 
 
 class PIIRedactor:

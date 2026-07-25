@@ -139,9 +139,9 @@ class AnyAgentOrchestrator:
         """Async body: create agent (or direct model call if no tools), then run."""
         # When no MCP tools are configured, skip the LangGraph react-agent
         # loop entirely.  create_react_agent with an empty tool list still
-        # wraps the model in a tool-calling loop — reasoning models like
-        # deepseek-reasoner can get stuck trying to invoke non-existent
-        # tools, burning through the recursion budget.
+        # wraps the model in a tool-calling loop — reasoning models can get
+        # stuck trying to invoke non-existent tools, burning through the
+        # recursion budget.
         # Direct model call: one prompt → one response, no looping.
         if not raw_mcp_servers:
             return await cls._run_direct_model(config, prompt)
