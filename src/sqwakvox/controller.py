@@ -293,9 +293,7 @@ class AppController:
 
                 duration = time.monotonic() - start_time
                 if tm.agent_execution_counter:
-                    tm.agent_execution_counter.add(
-                        1, {"model_id": model_id, "status": "blocked"}
-                    )
+                    tm.agent_execution_counter.add(1, {"model_id": model_id, "status": "blocked"})
                 if tm.agent_execution_duration:
                     tm.agent_execution_duration.record(
                         duration, {"model_id": model_id, "status": "blocked"}
@@ -374,23 +372,17 @@ class AppController:
 
             duration = time.monotonic() - start_time
             status_str = (
-                "blocked"
-                if result.is_blocked
-                else ("success" if result.success else "failure")
+                "blocked" if result.is_blocked else ("success" if result.success else "failure")
             )
             span.set_attribute("status", status_str)
             span.set_attribute("is_blocked", result.is_blocked)
             span.set_attribute("pii_redacted_query", result.pii_redacted_query)
             span.set_attribute("pii_redacted_response", result.pii_redacted_response)
-            span.set_attribute(
-                "discrepancies_count", len(result.math_discrepancies or [])
-            )
+            span.set_attribute("discrepancies_count", len(result.math_discrepancies or []))
             span.set_attribute("duration_sec", duration)
 
             if tm.agent_execution_counter:
-                tm.agent_execution_counter.add(
-                    1, {"model_id": model_id, "status": status_str}
-                )
+                tm.agent_execution_counter.add(1, {"model_id": model_id, "status": status_str})
             if tm.agent_execution_duration:
                 tm.agent_execution_duration.record(
                     duration, {"model_id": model_id, "status": status_str}

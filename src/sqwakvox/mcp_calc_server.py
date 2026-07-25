@@ -159,6 +159,7 @@ def _trace_tool(tool_name: str, fn: Callable[[], str]) -> str:
 )
 def calculator(expression: str) -> str:
     """Evaluate a mathematical expression safely."""
+
     def _run() -> str:
         try:
             result = safe_eval(expression)
@@ -181,6 +182,7 @@ def calculator(expression: str) -> str:
 )
 def stats_summary(numbers: str) -> str:
     """Compute full stats for a comma/space-separated list of numbers."""
+
     def _run() -> str:
         try:
             values = _parse_number_list(numbers)
@@ -203,9 +205,7 @@ def stats_summary(numbers: str) -> str:
         counts = Counter(values)
         max_count = max(counts.values())
         modes = sorted(k for k, v in counts.items() if v == max_count)
-        mode_str = (
-            ", ".join(f"{m:.10g}" for m in modes) if len(modes) < len(values) else "none"
-        )
+        mode_str = ", ".join(f"{m:.10g}" for m in modes) if len(modes) < len(values) else "none"
 
         variance = sum((x - mean) ** 2 for x in values) / n
         std_dev = math.sqrt(variance)

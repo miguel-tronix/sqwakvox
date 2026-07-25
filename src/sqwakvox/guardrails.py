@@ -175,13 +175,11 @@ class FinancialRuleEngine:
                 known_fv = (
                     known_val
                     if isinstance(known_val, FinancialValue)
-                    else parse_financial_value(str(known_val))
-                    or FinancialValue(float(known_val))
+                    else parse_financial_value(str(known_val)) or FinancialValue(float(known_val))
                 )
 
                 label_indices = [
-                    m.start()
-                    for m in re.finditer(re.escape(label_lower), response_text.lower())
+                    m.start() for m in re.finditer(re.escape(label_lower), response_text.lower())
                 ]
                 candidates: list[tuple[int, FinancialValue]] = []
                 for pos, fv in extracted:
@@ -217,13 +215,9 @@ class FinancialRuleEngine:
             if tm.guardrail_duration:
                 tm.guardrail_duration.record(elapsed, {"type": "math_assertion"})
             if not passed and tm.guardrail_violation_counter:
-                tm.guardrail_violation_counter.add(
-                    len(discrepancies), {"type": "math_assertion"}
-                )
+                tm.guardrail_violation_counter.add(len(discrepancies), {"type": "math_assertion"})
 
-            return VerificationResult(
-                passed=passed, discrepancies=discrepancies
-            )
+            return VerificationResult(passed=passed, discrepancies=discrepancies)
 
 
 class PIIRedactor:
@@ -281,9 +275,7 @@ class AnyGuardrailValidator:
         """Validates the prompt using any-guardrail, or falls back to True with safety logging."""
         tm = get_telemetry()
         start = time.monotonic()
-        with trace_span(
-            "sqwakvox.guardrail.validate_prompt", {"prompt_len": len(prompt)}
-        ) as span:
+        with trace_span("sqwakvox.guardrail.validate_prompt", {"prompt_len": len(prompt)}) as span:
             is_valid = True
             cls._try_init()
             if cls._guardrail_instance is not None:

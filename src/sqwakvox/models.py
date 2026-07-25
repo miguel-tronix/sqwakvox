@@ -20,18 +20,22 @@ class StructuredDocument(BaseModel):
 
 class ModelProvider:
     MAP: ClassVar[dict[str, dict[str, str]]] = {
-        "openai:gpt-4o": {"env_var": "OPENAI_API_KEY", "friendly_name": "OpenAI GPT-4o"},
+        "openai:gpt-5.5": {"env_var": "OPENAI_API_KEY", "friendly_name": "OpenAI GPT-5.5"},
+        "anthropic:claude-4.6": {
+            "env_var": "ANTHROPIC_API_KEY",
+            "friendly_name": "Anthropic Claude 4.6",
+        },
+        "google:gemini-3.5": {
+            "env_var": "GEMINI_API_KEY",
+            "friendly_name": "Google Gemini 3.5",
+        },
+        "deepseek:v4": {
+            "env_var": "DEEPSEEK_API_KEY",
+            "friendly_name": "Deepseek v4",
+        },
         "openai:gpt-4o-mini": {
             "env_var": "OPENAI_API_KEY",
             "friendly_name": "OpenAI GPT-4o-Mini",
-        },
-        "anthropic:claude-3-5-sonnet": {
-            "env_var": "ANTHROPIC_API_KEY",
-            "friendly_name": "Anthropic Claude 3.5 Sonnet",
-        },
-        "mistral:mistral-small-latest": {
-            "env_var": "MISTRAL_API_KEY",
-            "friendly_name": "Mistral Small",
         },
         "gemini:gemini-2.5-pro": {
             "env_var": "GEMINI_API_KEY",
@@ -40,14 +44,6 @@ class ModelProvider:
         "gemini:gemini-2.5-flash": {
             "env_var": "GEMINI_API_KEY",
             "friendly_name": "Gemini 2.5 Flash",
-        },
-        "deepseek:deepseek-chat": {
-            "env_var": "DEEPSEEK_API_KEY",
-            "friendly_name": "DeepSeek V3 (Chat)",
-        },
-        "deepseek:deepseek-reasoner": {
-            "env_var": "DEEPSEEK_API_KEY",
-            "friendly_name": "DeepSeek R1 (Reasoner)",
         },
     }
 
