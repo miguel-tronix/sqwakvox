@@ -2,7 +2,7 @@ import json
 from unittest.mock import MagicMock, patch
 
 from sqwakvox.controller import AppController, extract_message
-from sqwakvox.models import StructuredDocument, TableData
+from sqwakvox.models import ModelProvider, StructuredDocument, TableData
 
 
 def test_extract_message_plain_text() -> None:

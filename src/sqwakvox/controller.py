@@ -317,7 +317,7 @@ class AppController:
             )
 
             env_var = ModelProvider.get_env_var(model_id)
-
+            
             try:
                 from sqwakvox.agent import AnyAgentOrchestrator
 
