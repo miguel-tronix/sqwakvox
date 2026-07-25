@@ -11,6 +11,6 @@ uv.lock
 sqwakvox.log
 sqwakvoxchat.log
 *.log
-
+*.jsonl
 # VSCode
 .vscode
