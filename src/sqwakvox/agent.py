@@ -227,9 +227,7 @@ class AnyAgentOrchestrator:
 
         logger.info("Running direct model call (no tools) — model: %s", config.model_id)
         start_time = time.monotonic()
-        with trace_span(
-            "sqwakvox.agent.direct_model_call", {"model_id": config.model_id}
-        ) as span:
+        with trace_span("sqwakvox.agent.direct_model_call", {"model_id": config.model_id}) as span:
             try:
                 response = await asyncio.wait_for(
                     acompletion(

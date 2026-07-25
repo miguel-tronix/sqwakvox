@@ -53,9 +53,7 @@ class JSONFileSpanExporter(SpanExporter):
                         "name": span.name,
                         "trace_id": f"{span.context.trace_id:032x}",
                         "span_id": f"{span.context.span_id:016x}",
-                        "parent_span_id": (
-                            f"{span.parent.span_id:016x}" if span.parent else None
-                        ),
+                        "parent_span_id": (f"{span.parent.span_id:016x}" if span.parent else None),
                         "start_time_ns": span.start_time,
                         "end_time_ns": span.end_time,
                         "duration_ms": (
