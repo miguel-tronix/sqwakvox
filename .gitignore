@@ -13,6 +13,5 @@ sqwakvoxchat.log
 sqwakvox_telemetry.jsonl
 *.log
 *.jsonl
-
 # VSCode
 .vscode

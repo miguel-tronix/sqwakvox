@@ -290,7 +290,7 @@ class SqwakvoxApp(App[None]):
                     (info["friendly_name"], model_id)
                     for model_id, info in ModelProvider.MAP.items()
                 ],
-                value="openai:gpt-4o-mini",
+                value="openai:gpt-5.5-high",
                 id="model-selector",
             )
             yield Label("Enter Provider API Key:")
