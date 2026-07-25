@@ -20,30 +20,33 @@ class StructuredDocument(BaseModel):
 
 class ModelProvider:
     MAP: ClassVar[dict[str, dict[str, str]]] = {
-        "openai:gpt-5.5": {"env_var": "OPENAI_API_KEY", "friendly_name": "OpenAI GPT-5.5"},
+        "openai:gpt-5.5-high": {
+            "env_var": "OPENAI_API_KEY",
+            "friendly_name": "OpenAI GPT-5.5 High",
+        },
         "anthropic:claude-4.6": {
             "env_var": "ANTHROPIC_API_KEY",
             "friendly_name": "Anthropic Claude 4.6",
         },
-        "google:gemini-3.5": {
+        "gemini:gemini-3.6-flash": {
             "env_var": "GEMINI_API_KEY",
-            "friendly_name": "Google Gemini 3.5",
+            "friendly_name": "Google Gemini 3.6 Flash",
         },
-        "deepseek:v4": {
+        "gemini:gemini-3.5-flash": {
+            "env_var": "GEMINI_API_KEY",
+            "friendly_name": "Google Gemini 3.5 Flash",
+        },
+        "gemini:gemini-3.5-pro": {
+            "env_var": "GEMINI_API_KEY",
+            "friendly_name": "Google Gemini 3.5 Pro",
+        },
+        "deepseek:deepseek-v4-flash": {
             "env_var": "DEEPSEEK_API_KEY",
-            "friendly_name": "Deepseek v4",
+            "friendly_name": "Deepseek v4 Flash",
         },
-        "openai:gpt-4o-mini": {
-            "env_var": "OPENAI_API_KEY",
-            "friendly_name": "OpenAI GPT-4o-Mini",
-        },
-        "gemini:gemini-2.5-pro": {
-            "env_var": "GEMINI_API_KEY",
-            "friendly_name": "Gemini 2.5 Pro",
-        },
-        "gemini:gemini-2.5-flash": {
-            "env_var": "GEMINI_API_KEY",
-            "friendly_name": "Gemini 2.5 Flash",
+        "deepseek:deepseek-v4-pro": {
+            "env_var": "DEEPSEEK_API_KEY",
+            "friendly_name": "Deepseek v4 Pro",
         },
     }
 
