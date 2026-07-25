@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "sqwakvox"
-version = "0.1.2"
+version = "1.0.0"
 description = "Local AI Financial Document Assistant with Textual TUI, Docling Ingestion, and Mozilla any-guardrail Validation"
 readme = "README.md"
 requires-python = ">=3.12"
