@@ -13,6 +13,8 @@ from any_agent import AgentConfig, AgentFramework, AnyAgent
 from any_agent import AnyAgent as AnyAgentLib
 from any_agent.config import MCPParams
 
+from sqwakvox.telemetry import trace_span
+
 logger = logging.getLogger(__name__)
 
 CLEANUP_TIMEOUT_SECONDS = 30.0
@@ -69,7 +71,10 @@ class AnyAgentOrchestrator:
         )
 
         logger.info("Starting any-agent execution — model: %s", model_id)
-        with cls.inject_credentials(env_var, api_key):
+        with (
+            trace_span("sqwakvox.agent.orchestration", {"model_id": model_id}),
+            cls.inject_credentials(env_var, api_key),
+        ):
             # We use a single persistent event loop for agent creation AND
             # execution so that MCP stdio subprocess connections survive.
             # run_async_in_sync creates/destroys temp loops which would
@@ -158,51 +163,58 @@ class AnyAgentOrchestrator:
         cls._log_available_tools(agent)
 
         start_time = time.monotonic()
-        try:
-            trace = await asyncio.wait_for(
-                agent.run_async(
-                    prompt,
-                    config={"recursion_limit": MAX_AGENT_RECURSION_LIMIT},
-                ),
-                timeout=AGENT_RUN_TIMEOUT_SECONDS,
-            )
-            elapsed = time.monotonic() - start_time
-            response = str(trace.final_output)
-            logger.info(
-                "Agent execution complete — response length: %d chars, elapsed: %.1fs, spans: %d",
-                len(response),
-                elapsed,
-                len(trace.spans),
-            )
-            logger.debug("Agent response body:\n%s", response)
-            if "need more steps" in response.lower() or len(response) < 80:
-                logger.warning(
-                    "Agent returned a short/truncated response (%d chars). "
-                    "This usually means the recursion limit (%d) was hit "
-                    "before the model finished. The model may be looping "
-                    "on tool calls. Response: %s",
-                    len(response),
-                    MAX_AGENT_RECURSION_LIMIT,
-                    response[:200],
+        with trace_span(
+            "sqwakvox.agent.react_agent_run",
+            {"model_id": config.model_id, "mcp_servers_count": len(raw_mcp_servers)},
+        ) as span:
+            try:
+                trace = await asyncio.wait_for(
+                    agent.run_async(
+                        prompt,
+                        config={"recursion_limit": MAX_AGENT_RECURSION_LIMIT},
+                    ),
+                    timeout=AGENT_RUN_TIMEOUT_SECONDS,
                 )
-            return response
-        except TimeoutError:
-            elapsed = time.monotonic() - start_time
-            logger.error(
-                "Agent execution TIMED OUT after %.1fs (limit %ss).",
-                elapsed,
-                AGENT_RUN_TIMEOUT_SECONDS,
-            )
-            raise
-        finally:
-            elapsed = time.monotonic() - start_time
-            if elapsed > AGENT_RUN_TIMEOUT_SECONDS * 0.8:
-                logger.warning(
-                    "Agent run took %.1fs — near the timeout of %ss.",
+                elapsed = time.monotonic() - start_time
+                response = str(trace.final_output)
+                span.set_attribute("response_len", len(response))
+                span.set_attribute("elapsed_sec", elapsed)
+                span.set_attribute("trace_spans_count", len(trace.spans))
+                logger.info(
+                    "Agent execution complete — response: %d chars, elapsed: %.1fs, spans: %d",
+                    len(response),
+                    elapsed,
+                    len(trace.spans),
+                )
+                logger.debug("Agent response body:\n%s", response)
+                if "need more steps" in response.lower() or len(response) < 80:
+                    logger.warning(
+                        "Agent returned a short/truncated response (%d chars). "
+                        "This usually means the recursion limit (%d) was hit "
+                        "before the model finished. The model may be looping "
+                        "on tool calls. Response: %s",
+                        len(response),
+                        MAX_AGENT_RECURSION_LIMIT,
+                        response[:200],
+                    )
+                return response
+            except TimeoutError:
+                elapsed = time.monotonic() - start_time
+                logger.error(
+                    "Agent execution TIMED OUT after %.1fs (limit %ss).",
                     elapsed,
                     AGENT_RUN_TIMEOUT_SECONDS,
                 )
-            await cls._cleanup_async(agent)
+                raise
+            finally:
+                elapsed = time.monotonic() - start_time
+                if elapsed > AGENT_RUN_TIMEOUT_SECONDS * 0.8:
+                    logger.warning(
+                        "Agent run took %.1fs — near the timeout of %ss.",
+                        elapsed,
+                        AGENT_RUN_TIMEOUT_SECONDS,
+                    )
+                await cls._cleanup_async(agent)
 
     @classmethod
     async def _run_direct_model(cls, config: AgentConfig, prompt: str) -> str:
@@ -215,36 +227,41 @@ class AnyAgentOrchestrator:
 
         logger.info("Running direct model call (no tools) — model: %s", config.model_id)
         start_time = time.monotonic()
-        try:
-            response = await asyncio.wait_for(
-                acompletion(
-                    model=config.model_id,
-                    messages=[
-                        {"role": "system", "content": config.instructions or ""},
-                        {"role": "user", "content": prompt},
-                    ],
-                ),
-                timeout=AGENT_RUN_TIMEOUT_SECONDS,
-            )
-            elapsed = time.monotonic() - start_time
-            if hasattr(response, "choices"):
-                text = response.choices[0].message.content or ""
-            else:
-                chunks = []
-                async for chunk in response:
-                    if chunk.choices and chunk.choices[0].delta.content:
-                        chunks.append(chunk.choices[0].delta.content)
-                text = "".join(chunks)
-            logger.info(
-                "Direct model call complete — response length: %d chars, elapsed: %.1fs",
-                len(text),
-                elapsed,
-            )
-            return text
-        except TimeoutError:
-            elapsed = time.monotonic() - start_time
-            logger.error("Direct model call TIMED OUT after %.1fs", elapsed)
-            raise
+        with trace_span(
+            "sqwakvox.agent.direct_model_call", {"model_id": config.model_id}
+        ) as span:
+            try:
+                response = await asyncio.wait_for(
+                    acompletion(
+                        model=config.model_id,
+                        messages=[
+                            {"role": "system", "content": config.instructions or ""},
+                            {"role": "user", "content": prompt},
+                        ],
+                    ),
+                    timeout=AGENT_RUN_TIMEOUT_SECONDS,
+                )
+                elapsed = time.monotonic() - start_time
+                if hasattr(response, "choices"):
+                    text = response.choices[0].message.content or ""
+                else:
+                    chunks = []
+                    async for chunk in response:
+                        if chunk.choices and chunk.choices[0].delta.content:
+                            chunks.append(chunk.choices[0].delta.content)
+                    text = "".join(chunks)
+                span.set_attribute("response_len", len(text))
+                span.set_attribute("elapsed_sec", elapsed)
+                logger.info(
+                    "Direct model call complete — response length: %d chars, elapsed: %.1fs",
+                    len(text),
+                    elapsed,
+                )
+                return text
+            except TimeoutError:
+                elapsed = time.monotonic() - start_time
+                logger.error("Direct model call TIMED OUT after %.1fs", elapsed)
+                raise
 
     @classmethod
     async def _create_agent_async(

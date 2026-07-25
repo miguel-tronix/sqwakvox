@@ -10,6 +10,7 @@ uv.lock
 # App logs
 sqwakvox.log
 sqwakvoxchat.log
+sqwakvox_telemetry.jsonl
 *.log
 *.jsonl
 # VSCode

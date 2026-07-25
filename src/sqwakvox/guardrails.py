@@ -4,12 +4,15 @@ import hashlib
 import json
 import logging
 import re
+import time
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, ClassVar
 
 from pydantic import BaseModel
+
+from sqwakvox.telemetry import get_telemetry, trace_span
 
 logger = logging.getLogger(__name__)
 
@@ -104,98 +107,123 @@ class FinancialRuleEngine:
         expected_total: float | FinancialValue,
         tolerance: float = 0.01,
     ) -> bool:
-        if not values:
-            return False
+        with trace_span("sqwakvox.guardrail.verify_column_sum") as span:
+            if not values:
+                span.set_attribute("passed", False)
+                return False
 
-        fv_values = [v if isinstance(v, FinancialValue) else FinancialValue(v) for v in values]
-        fv_expected = (
-            expected_total
-            if isinstance(expected_total, FinancialValue)
-            else FinancialValue(expected_total)
-        )
+            fv_values = [v if isinstance(v, FinancialValue) else FinancialValue(v) for v in values]
+            fv_expected = (
+                expected_total
+                if isinstance(expected_total, FinancialValue)
+                else FinancialValue(expected_total)
+            )
 
-        # Reject summation if column contains mismatched units (e.g. % mixed with $)
-        all_items = [*fv_values, fv_expected]
-        units = [item.unit for item in all_items if item.unit != "number"]
-        if units:
-            first_unit = units[0]
-            for u in units[1:]:
-                if not are_units_compatible(first_unit, u):
-                    logger.warning(
-                        "verify_column_sum rejected due to unit mismatch: %s vs %s",
-                        first_unit,
-                        u,
-                    )
-                    return False
+            # Reject summation if column contains mismatched units (e.g. % mixed with $)
+            all_items = [*fv_values, fv_expected]
+            units = [item.unit for item in all_items if item.unit != "number"]
+            if units:
+                first_unit = units[0]
+                for u in units[1:]:
+                    if not are_units_compatible(first_unit, u):
+                        logger.warning(
+                            "verify_column_sum rejected due to unit mismatch: %s vs %s",
+                            first_unit,
+                            u,
+                        )
+                        span.set_attribute("passed", False)
+                        span.set_attribute("unit_mismatch", True)
+                        return False
 
-        actual_sum = sum(float(v) for v in fv_values)
-        expected_val = float(fv_expected)
-        return abs(actual_sum - expected_val) <= tolerance
+            actual_sum = sum(float(v) for v in fv_values)
+            expected_val = float(fv_expected)
+            is_valid = abs(actual_sum - expected_val) <= tolerance
+            span.set_attribute("passed", is_valid)
+            return is_valid
 
     @staticmethod
     def cross_check_text_assertions(
         response_text: str, data_store: Mapping[str, float | FinancialValue]
     ) -> VerificationResult:
-        discrepancies: list[str] = []
-        if not response_text or not data_store:
-            return VerificationResult(passed=True, discrepancies=[])
+        tm = get_telemetry()
+        start = time.monotonic()
+        with trace_span("sqwakvox.guardrail.cross_check_text_assertions") as span:
+            discrepancies: list[str] = []
+            if not response_text or not data_store:
+                return VerificationResult(passed=True, discrepancies=[])
 
-        extracted: list[tuple[int, FinancialValue]] = []
-        pattern = (
-            r"(?:[\$€£¥]\s*)?\b\d+(?:,\d{3})*(?:\.\d+)?"
-            r"\s*(?:%|\b(?:percent|percentage|pct|USD|EUR|GBP|dollars?)\b)?"
-        )
-
-        for m in re.finditer(pattern, response_text, re.IGNORECASE):
-            raw_match = m.group()
-            fv = parse_financial_value(raw_match)
-            if fv is not None:
-                extracted.append((m.start(), fv))
-
-        for label, known_val in data_store.items():
-            if not label or len(label) <= 1:
-                continue
-
-            label_lower = label.lower()
-            if label_lower not in response_text.lower():
-                continue
-
-            known_fv = (
-                known_val
-                if isinstance(known_val, FinancialValue)
-                else parse_financial_value(str(known_val)) or FinancialValue(float(known_val))
+            extracted: list[tuple[int, FinancialValue]] = []
+            pattern = (
+                r"(?:[\$€£¥]\s*)?\b\d+(?:,\d{3})*(?:\.\d+)?"
+                r"\s*(?:%|\b(?:percent|percentage|pct|USD|EUR|GBP|dollars?)\b)?"
             )
 
-            label_indices = [
-                m.start() for m in re.finditer(re.escape(label_lower), response_text.lower())
-            ]
-            candidates: list[tuple[int, FinancialValue]] = []
-            for pos, fv in extracted:
-                min_dist = min(abs(pos - l_idx) for l_idx in label_indices)
-                if min_dist < 120:
-                    candidates.append((min_dist, fv))
+            for m in re.finditer(pattern, response_text, re.IGNORECASE):
+                raw_match = m.group()
+                fv = parse_financial_value(raw_match)
+                if fv is not None:
+                    extracted.append((m.start(), fv))
 
-            if not candidates:
-                continue
+            for label, known_val in data_store.items():
+                if not label or len(label) <= 1:
+                    continue
 
-            candidates.sort(key=lambda x: x[0])
-            _, asserted_fv = candidates[0]
+                label_lower = label.lower()
+                if label_lower not in response_text.lower():
+                    continue
 
-            if not are_units_compatible(asserted_fv.unit, known_fv.unit):
-                discrepancies.append(
-                    f"Unit mismatch for '{label}': asserted '{asserted_fv.raw_str}' "
-                    f"(unit '{asserted_fv.unit}') does not match expected unit '{known_fv.unit}'"
-                )
-                continue
-
-            if abs(asserted_fv - known_fv) > 0.01:
-                expected_repr = known_fv.raw_str or known_fv
-                discrepancies.append(
-                    f"LLM value {asserted_fv.raw_str} does not match expected "
-                    f"{expected_repr} for '{label}'"
+                known_fv = (
+                    known_val
+                    if isinstance(known_val, FinancialValue)
+                    else parse_financial_value(str(known_val))
+                    or FinancialValue(float(known_val))
                 )
 
-        return VerificationResult(passed=len(discrepancies) == 0, discrepancies=discrepancies)
+                label_indices = [
+                    m.start()
+                    for m in re.finditer(re.escape(label_lower), response_text.lower())
+                ]
+                candidates: list[tuple[int, FinancialValue]] = []
+                for pos, fv in extracted:
+                    min_dist = min(abs(pos - l_idx) for l_idx in label_indices)
+                    if min_dist < 120:
+                        candidates.append((min_dist, fv))
+
+                if not candidates:
+                    continue
+
+                candidates.sort(key=lambda x: x[0])
+                _, asserted_fv = candidates[0]
+
+                if not are_units_compatible(asserted_fv.unit, known_fv.unit):
+                    discrepancies.append(
+                        f"Unit mismatch for '{label}': asserted '{asserted_fv.raw_str}' "
+                        f"('{asserted_fv.unit}') vs expected unit '{known_fv.unit}'"
+                    )
+                    continue
+
+                if abs(asserted_fv - known_fv) > 0.01:
+                    expected_repr = known_fv.raw_str or known_fv
+                    discrepancies.append(
+                        f"LLM value {asserted_fv.raw_str} does not match expected "
+                        f"{expected_repr} for '{label}'"
+                    )
+
+            elapsed = time.monotonic() - start
+            passed = len(discrepancies) == 0
+            span.set_attribute("passed", passed)
+            span.set_attribute("discrepancy_count", len(discrepancies))
+
+            if tm.guardrail_duration:
+                tm.guardrail_duration.record(elapsed, {"type": "math_assertion"})
+            if not passed and tm.guardrail_violation_counter:
+                tm.guardrail_violation_counter.add(
+                    len(discrepancies), {"type": "math_assertion"}
+                )
+
+            return VerificationResult(
+                passed=passed, discrepancies=discrepancies
+            )
 
 
 class PIIRedactor:
@@ -208,10 +236,13 @@ class PIIRedactor:
 
     @classmethod
     def redact_text(cls, text: str) -> str:
-        redacted = text
-        for label, pattern in cls.REDACTION_PATTERNS.items():
-            redacted = pattern.sub(f"[{label}_REDACTED]", redacted)
-        return redacted
+        with trace_span("sqwakvox.guardrail.redact_pii", {"text_len": len(text)}) as span:
+            redacted = text
+            for label, pattern in cls.REDACTION_PATTERNS.items():
+                redacted = pattern.sub(f"[{label}_REDACTED]", redacted)
+            has_pii = redacted != text
+            span.set_attribute("has_pii", has_pii)
+            return redacted
 
     @classmethod
     def contains_pii(cls, text: str) -> bool:
@@ -248,17 +279,33 @@ class AnyGuardrailValidator:
     @classmethod
     def validate_prompt(cls, prompt: str) -> bool:
         """Validates the prompt using any-guardrail, or falls back to True with safety logging."""
-        cls._try_init()
-        if cls._guardrail_instance is not None:
-            try:
-                result = cls._guardrail_instance.validate(prompt)
-                if hasattr(result, "valid"):
-                    return bool(result.valid)
-                if hasattr(result, "passed"):
-                    return bool(result.passed)
-            except Exception as e:
-                logger.error(f"Error during any-guardrail execution: {e}")
-        return True
+        tm = get_telemetry()
+        start = time.monotonic()
+        with trace_span(
+            "sqwakvox.guardrail.validate_prompt", {"prompt_len": len(prompt)}
+        ) as span:
+            is_valid = True
+            cls._try_init()
+            if cls._guardrail_instance is not None:
+                try:
+                    result = cls._guardrail_instance.validate(prompt)
+                    if hasattr(result, "valid"):
+                        is_valid = bool(result.valid)
+                    elif hasattr(result, "passed"):
+                        is_valid = bool(result.passed)
+                except Exception as e:
+                    logger.error(f"Error during any-guardrail execution: {e}")
+
+            elapsed = time.monotonic() - start
+            span.set_attribute("is_valid", is_valid)
+            span.set_attribute("duration_sec", elapsed)
+
+            if tm.guardrail_duration:
+                tm.guardrail_duration.record(elapsed, {"type": "prompt_safety"})
+            if not is_valid and tm.guardrail_violation_counter:
+                tm.guardrail_violation_counter.add(1, {"type": "prompt_safety"})
+
+            return is_valid
 
 
 class AuditLogger:
