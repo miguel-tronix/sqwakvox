@@ -21,8 +21,8 @@ class StructuredDocument(BaseModel):
 class ModelProvider:
     MAP: ClassVar[dict[str, dict[str, str]]] = {
         "openai:gpt-5.5-high": {
-            "env_var": "OPENAI_API_KEY", 
-            "friendly_name": "OpenAI GPT-5.5 High"
+            "env_var": "OPENAI_API_KEY",
+            "friendly_name": "OpenAI GPT-5.5 High",
         },
         "anthropic:claude-4.6": {
             "env_var": "ANTHROPIC_API_KEY",
@@ -33,16 +33,16 @@ class ModelProvider:
             "friendly_name": "Google Gemini 3.6 Flash",
         },
         "gemini:gemini-3.5-flash": {
-                    "env_var": "GEMINI_API_KEY",
-                    "friendly_name": "Google Gemini 3.5 Flash",
+            "env_var": "GEMINI_API_KEY",
+            "friendly_name": "Google Gemini 3.5 Flash",
         },
         "gemini:gemini-3.5-pro": {
-                    "env_var": "GEMINI_API_KEY",
-                    "friendly_name": "Google Gemini 3.5 Pro",
-                },
+            "env_var": "GEMINI_API_KEY",
+            "friendly_name": "Google Gemini 3.5 Pro",
+        },
         "deepseek:deepseek-v4-flash": {
-                    "env_var": "DEEPSEEK_API_KEY",
-                    "friendly_name": "Deepseek v4 Flash",
+            "env_var": "DEEPSEEK_API_KEY",
+            "friendly_name": "Deepseek v4 Flash",
         },
         "deepseek:deepseek-v4-pro": {
             "env_var": "DEEPSEEK_API_KEY",
@@ -53,4 +53,3 @@ class ModelProvider:
     @classmethod
     def get_env_var(cls, model_id: str) -> str:
         return cls.MAP.get(model_id, {}).get("env_var", "OPENAI_API_KEY")
-
