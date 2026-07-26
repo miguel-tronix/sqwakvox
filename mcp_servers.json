@@ -18,6 +18,11 @@
         "sqwakvox_mcp.db"
       ],
       "client_session_timeout_seconds": 300
+    },
+    "ascii-charts": {
+      "command": "mcp-ascii-charts",
+      "args": [],
+      "client_session_timeout_seconds": 300
     }
   }
 }
