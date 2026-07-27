@@ -17,6 +17,7 @@ from jinja2 import Template
 
 from sqwakvox.models import ModelProvider
 from sqwakvox.telemetry import trace_span
+
 logger = logging.getLogger(__name__)
 
 CLEANUP_TIMEOUT_SECONDS = 30.0
@@ -27,6 +28,7 @@ MAX_STARTUP_RETRIES = 1
 MAX_AGENT_RECURSION_LIMIT = 20
 # Hard wall-clock timeout for the entire agent run.
 AGENT_RUN_TIMEOUT_SECONDS = 180.0
+
 
 def _patch_gemini_provider() -> None:
     """Monkey-patch any_llm Gemini utils to convert role='function' to role='user'.
@@ -53,7 +55,7 @@ def _patch_gemini_provider() -> None:
             return formatted_messages, system_instruction
 
         gemini_utils._convert_messages = patched_convert_messages
-        setattr(gemini_utils, "_sqwakvox_patched", True)
+        gemini_utils._sqwakvox_patched = True
     except Exception as exc:
         logger.warning("Failed to apply Gemini provider role patch: %s", exc)
 
@@ -75,6 +77,7 @@ UNIFIED_USER_PROMPT_TEMPLATE = Template(
     "------------------------\n\n"
     "{{ prompt }}"
 )
+
 
 class AnyAgentOrchestrator:
     _lock = threading.Lock()
@@ -113,9 +116,7 @@ class AnyAgentOrchestrator:
         """
         if not ModelProvider.supports_system_role(model_id):
             instructions = None
-            formatted_prompt = UNIFIED_USER_PROMPT_TEMPLATE.render(
-                context=context, prompt=prompt
-            )
+            formatted_prompt = UNIFIED_USER_PROMPT_TEMPLATE.render(context=context, prompt=prompt)
         else:
             instructions = STANDARD_SYSTEM_INSTRUCTIONS_TEMPLATE.render(context=context)
             formatted_prompt = prompt
