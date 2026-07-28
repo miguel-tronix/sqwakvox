@@ -1,30 +1,32 @@
 # Sqwakvox — Local AI Financial Document Assistant
 
+```
 ███████╗ ██████╗ ██╗    ██╗ █████╗ ██╗  ██╗██╗   ██╗ ██████╗ ██╗  ██╗
 ██╔════╝██╔═══██╗██║    ██║██╔══██╗██║ ██╔╝██║   ██║██╔═══██╗╚██╗██╔╝
 ███████╗██║   ██║██║ █╗ ██║███████║█████╔╝ ██║   ██║██║   ██║ ╚███╔╝ 
 ╚════██║██║▄▄ ██║██║███╗██║██╔══██║██╔═██╗ ╚██╗ ██╔╝██║   ██║ ██╔██╗ 
 ███████║╚██████╔╝╚███╔███╔╝██║  ██║██║  ██╗ ╚████╔╝ ╚██████╔╝██╔╝ ██╗
 ╚══════╝ ╚══▀▀═╝  ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝  ╚═══╝   ╚═════╝ ╚═╝  ╚═╝
+```
 
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue)](https://python.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-Sqwakvox is a **Textual TUI** app that ingests financial documents (PDFs) via **IBM Docling**, renders tables with sparkline trends, and lets you chat with the document through **Mozilla any-agent** (LangChain) backed by multiple LLM providers — all with prompt guardrails, PII redaction, and numerical cross-validation.
+Sqwakvox is a terminal user interface application for financial document analysis. It uses IBM Docling to read PDF files and render tables with sparkline trends. It connects to language models through Mozilla any-agent. It includes prompt guardrails, PII redaction, and numerical cross-validation.
 
 ![Screenshot](screenshots/SqwakvoxApp_2026-05-26T11_26_35_185726.svg)
 
 ## Features
 
-- **3-Pane TUI** — Sidebar (file load, model config, ingest history), document render pane (markdown + tables + sparklines), chat log
-- **Docling Ingestion** — Parse local PDFs or remote URLs; table extraction with dataframe export
-- **Multi-Model Chat** — OpenAI GPT-4o / GPT-4o-Mini, Anthropic Claude 3.5 Sonnet, Mistral Small, Gemini 2.5 Pro / Flash
-- **Input Guardrails** — Mozilla `any-guardrail` (INJECGUARD) blocks prompt injection
-- **PII Redaction** — Automatic redaction of SSNs, credit cards, bank accounts, emails
-- **Financial Cross-Validation** — Extracts labelled numeric values from tables and verifies LLM assertions against them
-- **OpenTelemetry Instrumentation** — Comprehensive tracing and metric instrumentation across document ingestion, agent reasoning, guardrails, and MCP calculations
-- **Unicode Table Rendering** — Double-lined borders, auto-alignment, numeric column sparklines
-- **Audit Logging** — JSONL audit trail at `~/.gemini/antigravity/sqwakvox/audit_log.jsonl`
+- **3-Pane TUI**: The interface has a sidebar, a document render pane, and a chat log.
+- **Docling Integration**: The application parses local PDF files and remote URLs. It exports table data to dataframes.
+- **Multi-Model Support**: The application connects to OpenAI, Anthropic, Mistral, and Gemini models.
+- **Input Guardrails**: Mozilla `any-guardrail` blocks prompt injection attacks before queries reach the model.
+- **PII Redaction**: The system redacts Social Security numbers, credit cards, bank accounts, and email addresses.
+- **Financial Cross-Validation**: The rule engine extracts numeric table values and verifies calculated results.
+- **OpenTelemetry Instrumentation**: The system records traces and metrics for document processing, agent execution, and tool calls.
+- **Unicode Table Rendering**: The application displays double borders, automatic column alignment, and numeric sparklines.
+- **Audit Logging**: The application writes events to an append-only JSONL audit log.
 
 ## Architecture
 
@@ -51,25 +53,31 @@ Sqwakvox is a **Textual TUI** app that ingests financial documents (PDFs) via **
 
 ## Installation
 
+Install the package with pip:
+
 ```bash
 pip install sqwakvox
 # or from source:
 pip install -e .
 ```
 
-Requires Python ≥ 3.12.
+This application requires Python 3.12 or higher.
 
 ## Usage
+
+Run the application:
 
 ```bash
 sqwakvox
 ```
 
-1. **Load a document** — Enter a file path or URL, or click the 📁 button to browse
-2. **Select a model** — Pick from the dropdown (Gemini 2.5 Flash, GPT-4o, etc.)
-3. **Enter your API key** — For the chosen provider
-4. **Click "Load & Parse"** — Docling extracts layout, tables, and text
-5. **Ask questions** — The agent answers grounded in the document context
+Follow these steps to analyze a document:
+
+1. If you have a local file or URL, enter the path in the input field or click the browse button.
+2. Select a model provider from the dropdown menu.
+3. Enter your API key for the selected provider.
+4. Click **Load & Parse** to extract layout, text, and tables.
+5. Enter a question in the chat input.
 
 ### Keybindings
 
@@ -85,7 +93,9 @@ sqwakvox
 
 ## Configuration
 
-API keys are entered at runtime in the TUI sidebar (never stored). Supported environment variables (can be used instead):
+You enter API keys in the sidebar at runtime. The application does not store your keys.
+
+You can set these environment variables instead of entering keys in the sidebar:
 - `OPENAI_API_KEY`
 - `ANTHROPIC_API_KEY`
 - `MISTRAL_API_KEY`
@@ -93,56 +103,66 @@ API keys are entered at runtime in the TUI sidebar (never stored). Supported env
 
 ## Guardrails & Safety
 
-1. **Prompt Injection** — `any-guardrail` (INJECGUARD) inspects every user query before it reaches the LLM
-2. **PII Redaction** — SSNs, credit cards, IBANs, and emails are automatically redacted from both queries and agent responses
-3. **Numerical Cross-Validation** — The `FinancialRuleEngine` parses labelled figures from document tables and cross-checks LLM responses for arithmetic consistency
-4. **Audit Logging** — All operations (ingest, query, response) are timestamped and written to an append-only JSONL audit log
+1. **Prompt Injection**: `any-guardrail` inspects every user query before the model receives the text.
+2. **PII Redaction**: The redactor strips Social Security numbers, credit card numbers, IBANs, and email addresses from user queries and model responses.
+3. **Numerical Cross-Validation**: The `FinancialRuleEngine` extracts labelled numbers from document tables and verifies model calculations.
+4. **Audit Logging**: The application writes timestamped logs to `~/.gemini/antigravity/sqwakvox/audit_log.jsonl`.
 
 ## OpenTelemetry & Performance Monitoring
 
-Sqwakvox includes built-in OpenTelemetry (OTel) instrumentation for distributed tracing and performance metrics collection:
+Sqwakvox records OpenTelemetry traces and performance metrics.
 
-- **Traces & Spans**:
-  - `sqwakvox.document.convert` — Measures Docling PDF/layout parsing latency and document size.
-  - `sqwakvox.agent.execute` / `sqwakvox.agent.direct_model_call` — Tracks end-to-end agent query latency, model execution duration, prompt length, response length, and recursion limits.
-  - `sqwakvox.guardrail.validate_prompt` / `sqwakvox.guardrail.redact_pii` / `sqwakvox.guardrail.cross_check_text_assertions` — Captures guardrail safety checks and latency.
-  - `sqwakvox.cross_validate` — Monitors table numerical column sum verification duration.
-  - `sqwakvox.mcp_tool.<tool_name>` — Measures execution duration and success rates for MCP calculator and statistics tools.
-- **Metrics**:
-  - `sqwakvox.document.ingest.duration` / `sqwakvox.document.ingest.count`
-  - `sqwakvox.agent.execution.duration` / `sqwakvox.agent.execution.count`
-  - `sqwakvox.guardrail.duration` / `sqwakvox.guardrail.violations.count`
-  - `sqwakvox.mcp.tool.duration` / `sqwakvox.mcp.tool.count`
-  - `sqwakvox.active_documents.count`
+### Traces & Spans
+
+- `sqwakvox.document.convert`: Measures document parsing latency and file size.
+- `sqwakvox.agent.execute`: Tracks agent query latency, execution duration, and prompt length.
+- `sqwakvox.guardrail.validate_prompt`: Records prompt validation latency and results.
+- `sqwakvox.guardrail.redact_pii`: Records PII redaction duration and detected items.
+- `sqwakvox.cross_validate`: Measures table column sum validation time.
+- `sqwakvox.mcp_tool.<tool_name>`: Records execution time and status for MCP tools.
+
+### Metrics
+
+- `sqwakvox.document.ingest.duration`
+- `sqwakvox.document.ingest.count`
+- `sqwakvox.agent.execution.duration`
+- `sqwakvox.agent.execution.count`
+- `sqwakvox.guardrail.duration`
+- `sqwakvox.guardrail.violations.count`
+- `sqwakvox.mcp.tool.duration`
+- `sqwakvox.mcp.tool.count`
+- `sqwakvox.active_documents.count`
 
 ### Telemetry Configuration
 
-Configure telemetry via environment variables:
+Configure telemetry with environment variables:
 
 ```bash
-# Enable/disable telemetry (default: true)
+# Enable or disable telemetry (default: true)
 export SQWAKVOX_TELEMETRY_ENABLED=true
 
-# Choose exporter: otlp, file, console, or none
+# Select exporter: otlp, file, console, or none
 export SQWAKVOX_TELEMETRY_EXPORTER=file
 
-# Path for local JSON lines trace log (default: sqwakvox_telemetry.jsonl)
+# Set path for local JSON lines trace log
 export SQWAKVOX_TELEMETRY_FILE=sqwakvox_telemetry.jsonl
 
-# OTLP collector endpoint (e.g. Jaeger, OpenTelemetry Collector)
+# Set OTLP collector endpoint
 export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4318"
 ```
 
-## Build With UV
+## Build with UV
 
-To build the application:
+Build the application package:
 
 ```bash
 uv sync
 uv build
 ```
 
-## Run With UV
+## Run with UV
+
+Run the application:
 
 ```bash
 uv run sqwakvox
@@ -150,17 +170,19 @@ uv run sqwakvox
 
 ## Development
 
+Run development commands:
+
 ```bash
-# Install with dev dependencies
+# Install development dependencies
 pip install -e ".[dev]"
 
-# Lint
+# Run code linter
 ruff check src/
 
-# Type-check
+# Run type checker
 mypy src/
 
-# Test
+# Run tests
 pytest
 ```
 

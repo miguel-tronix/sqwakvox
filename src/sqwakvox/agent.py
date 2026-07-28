@@ -8,11 +8,14 @@ import threading
 import time
 from collections.abc import Generator
 from contextlib import contextmanager, suppress
+from typing import Any, cast
 
 from any_agent import AgentConfig, AgentFramework, AnyAgent
 from any_agent import AnyAgent as AnyAgentLib
 from any_agent.config import MCPParams
+from jinja2 import Template
 
+from sqwakvox.models import ModelProvider
 from sqwakvox.telemetry import trace_span
 
 logger = logging.getLogger(__name__)
@@ -25,6 +28,55 @@ MAX_STARTUP_RETRIES = 1
 MAX_AGENT_RECURSION_LIMIT = 20
 # Hard wall-clock timeout for the entire agent run.
 AGENT_RUN_TIMEOUT_SECONDS = 180.0
+
+
+def _patch_gemini_provider() -> None:
+    """Monkey-patch any_llm Gemini utils to convert role='function' to role='user'.
+
+    Google GenAI SDK only supports 'user' and 'model' roles. When tool responses
+    are returned with role='function', Gemini API fails with:
+    400 INVALID_ARGUMENT: "Role 'function' is not supported. Please use a valid role".
+    """
+    try:
+        import any_llm.providers.gemini.utils as gemini_utils
+
+        if getattr(gemini_utils, "_sqwakvox_patched", False):
+            return
+
+        original_convert = gemini_utils._convert_messages
+
+        def patched_convert_messages(
+            messages: list[dict[str, Any]], provider_name: str = "gemini"
+        ) -> tuple[list[Any], str | None]:
+            formatted_messages, system_instruction = original_convert(messages, provider_name)
+            for msg in formatted_messages:
+                if getattr(msg, "role", None) == "function":
+                    msg.role = "user"
+            return formatted_messages, system_instruction
+
+        gemini_utils._convert_messages = patched_convert_messages
+        gemini_utils._sqwakvox_patched = True  # type: ignore[attr-defined]
+    except Exception as exc:
+        logger.warning("Failed to apply Gemini provider role patch: %s", exc)
+
+
+_patch_gemini_provider()
+STANDARD_SYSTEM_INSTRUCTIONS_TEMPLATE = Template(
+    "You are a helpful Financial Document Assistant.\n"
+    "Always ground your answers in the document context provided below.\n\n"
+    "--- DOCUMENT CONTEXT ---\n"
+    "{{ context }}\n"
+    "------------------------"
+)
+
+UNIFIED_USER_PROMPT_TEMPLATE = Template(
+    "You are a helpful Financial Document Assistant.\n"
+    "Always ground your answers in the document context provided below.\n\n"
+    "--- DOCUMENT CONTEXT ---\n"
+    "{{ context }}\n"
+    "------------------------\n\n"
+    "{{ prompt }}"
+)
 
 
 class AnyAgentOrchestrator:
@@ -49,6 +101,29 @@ class AnyAgentOrchestrator:
                     os.environ[env_var] = original_val
 
     @classmethod
+    def render_prompt(
+        cls,
+        model_id: str,
+        context: str,
+        prompt: str,
+    ) -> tuple[str | None, str]:
+        """Inject and render the correct Jinja2 template depending on which model is selected.
+
+        For models that do not support/accept a separate system role in agent queries
+        (e.g., gemini-3.6-flash), system instructions and context are injected directly into
+        the user prompt template, and instructions is set to None.
+        For models supporting system roles, system instructions are rendered into instructions.
+        """
+        if not ModelProvider.supports_system_role(model_id):
+            instructions = None
+            formatted_prompt = UNIFIED_USER_PROMPT_TEMPLATE.render(context=context, prompt=prompt)
+        else:
+            instructions = STANDARD_SYSTEM_INSTRUCTIONS_TEMPLATE.render(context=context)
+            formatted_prompt = prompt
+
+        return instructions, formatted_prompt
+
+    @classmethod
     def execute_query(
         cls,
         model_id: str,
@@ -58,10 +133,10 @@ class AnyAgentOrchestrator:
         env_var: str,
         mcp_servers: list[MCPParams] | None = None,
     ) -> str:
-        instructions = (
-            f"You are a helpful Financial Document Assistant.\n"
-            f"Always ground your answers in the document context provided below.\n\n"
-            f"--- DOCUMENT CONTEXT ---\n{context}\n------------------------"
+        instructions, formatted_prompt = cls.render_prompt(
+            model_id=model_id,
+            context=context,
+            prompt=prompt,
         )
 
         config = AgentConfig(
@@ -69,7 +144,6 @@ class AnyAgentOrchestrator:
             instructions=instructions,
             tools=list(mcp_servers) if mcp_servers else [],
         )
-
         logger.info("Starting any-agent execution — model: %s", model_id)
         with (
             trace_span("sqwakvox.agent.orchestration", {"model_id": model_id}),
@@ -81,7 +155,7 @@ class AnyAgentOrchestrator:
             # kill anyio streams between create() and run().
             return cls._execute_in_single_loop(
                 config=config,
-                prompt=prompt,
+                prompt=formatted_prompt,
                 raw_mcp_servers=mcp_servers or [],
             )
 
@@ -227,15 +301,17 @@ class AnyAgentOrchestrator:
 
         logger.info("Running direct model call (no tools) — model: %s", config.model_id)
         start_time = time.monotonic()
+        messages: list[dict[str, Any]] = []
+        if config.instructions:
+            messages.append({"role": "system", "content": config.instructions})
+        messages.append({"role": "user", "content": prompt})
+
         with trace_span("sqwakvox.agent.direct_model_call", {"model_id": config.model_id}) as span:
             try:
                 response = await asyncio.wait_for(
                     acompletion(
                         model=config.model_id,
-                        messages=[
-                            {"role": "system", "content": config.instructions or ""},
-                            {"role": "user", "content": prompt},
-                        ],
+                        messages=cast(Any, messages),
                     ),
                     timeout=AGENT_RUN_TIMEOUT_SECONDS,
                 )
