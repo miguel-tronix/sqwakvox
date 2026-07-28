@@ -55,7 +55,7 @@ def _patch_gemini_provider() -> None:
             return formatted_messages, system_instruction
 
         gemini_utils._convert_messages = patched_convert_messages
-        gemini_utils._sqwakvox_patched = True
+        gemini_utils._sqwakvox_patched = True  # type: ignore[attr-defined]
     except Exception as exc:
         logger.warning("Failed to apply Gemini provider role patch: %s", exc)
 
