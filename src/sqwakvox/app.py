@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import re
@@ -27,11 +28,11 @@ from textual.widgets import (
     Tab,
     Tabs,
 )
-from textual.worker import get_current_worker
 
-from sqwakvox.controller import AppController, extract_message
+from sqwakvox.controller import AgentResult, extract_message
 from sqwakvox.guardrails import AuditLogger
 from sqwakvox.models import ModelProvider, StructuredDocument
+from sqwakvox.presenter import Presenter, TaskHandle, TaskStatus
 from sqwakvox.renderer import DocumentRenderPane
 from sqwakvox.telemetry import get_telemetry
 
@@ -258,9 +259,11 @@ class SqwakvoxApp(App[None]):
     active_document_name = reactive("")
     active_error: reactive[str | None] = reactive(None)
 
-    def __init__(self, controller: AppController | None = None) -> None:
+    def __init__(self, presenter: Presenter | None = None) -> None:
         super().__init__()
-        self.controller = controller or AppController()
+        self.presenter = presenter or Presenter()
+        self._active_parse_handle: TaskHandle | None = None
+        self._active_agent_handles: dict[str, TaskHandle] = {}
         self.doc_context: str = ""
         self.structured_doc: StructuredDocument | None = None
         self.ingestion_history: list[str] = []
@@ -600,19 +603,46 @@ class SqwakvoxApp(App[None]):
         self.write_chat_message(cv_header, persist=True)
         self.write_agent_response(cv_header)
 
-        results = self.controller.cross_validate(self.structured_doc)
-        for col_name, expected, actual, is_valid in results:
-            if is_valid:
-                msg = (
-                    f"  [green]✓[/green] Column '{col_name}' "
-                    f"sums to {expected} (actual: {actual:.2f})"
+        # Dispatch cross-validation as a Celery task via the presenter.
+        self.run_worker(
+            self._dispatch_cross_validate(self.structured_doc),
+            name="cross_validate_worker",
+        )
+
+    async def _dispatch_cross_validate(
+        self, doc: StructuredDocument
+    ) -> None:
+        """Async Textual worker: cross-validate the parsed document tables."""
+
+        def on_complete(status: TaskStatus, results: Any) -> None:
+            if status == TaskStatus.SUCCESS:
+                for col_name, expected, actual, is_valid in results:
+                    if is_valid:
+                        msg = (
+                            f"  [green]✓[/green] Column '{col_name}' "
+                            f"sums to {expected} (actual: {actual:.2f})"
+                        )
+                    else:
+                        msg = f"  [red]✗[/red] Column '{col_name}' " \
+                              f"expected {expected} but got {actual:.2f}"
+                    self.write_chat_message(msg, persist=True)
+                    self.write_agent_response(msg)
+            elif status == TaskStatus.FAILURE:
+                err = results if isinstance(results, str) else str(results)
+                self.write_chat_message(
+                    f"[bold red]Cross-validation failed:[/bold red] {escape(extract_message(err))}",
+                    persist=True,
                 )
-                self.write_chat_message(msg, persist=True)
-                self.write_agent_response(msg)
-            else:
-                msg = f"  [red]✗[/red] Column '{col_name}' expected {expected} but got {actual:.2f}"
-                self.write_chat_message(msg, persist=True)
-                self.write_agent_response(msg)
+
+        await self.presenter.cross_validate(
+            document=doc,
+            on_complete=on_complete,
+            on_error=lambda err: self.write_chat_message(
+                f"[bold red]Cross-validation error:[/bold red] {escape(extract_message(err))}",
+                persist=True,
+            ),
+        )
+
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn-browse":
@@ -634,6 +664,15 @@ class SqwakvoxApp(App[None]):
         source = self.query_one("#doc-source", Input).value.strip()
         if not source:
             return
+
+        # If a parse is already in flight, do nothing.
+        if self._active_parse_handle is not None:
+            self.write_chat_message(
+                "[bold yellow]A document parse is already in progress.[/bold yellow]",
+                persist=False,
+            )
+            return
+
         self.is_parsing = True
         self.active_error = None
 
@@ -645,23 +684,43 @@ class SqwakvoxApp(App[None]):
             "[italic dim]Initializing Docling Parser (this may take a few seconds)...[/italic dim]",
             persist=False,
         )
-        logger.info(f"Initiated parsing for document source: {source}")
+        logger.info("Initiated parsing for document source: %s", source)
 
-        self.run_worker(
-            lambda: self._convert_document_in_background(source),
-            thread=True,
+        # Textual workers are asyncio Tasks on the same event loop as the
+        # presenter, so we can await presenter calls directly.
+        self._active_parse_handle = self.run_worker(
+            self._dispatch_parse(source),
             name="docling_parser",
         )
 
-    def _convert_document_in_background(self, source: str) -> None:
-        worker = get_current_worker()
-        try:
-            structured = self.controller.convert_document(source, lambda: worker.is_cancelled)
-            if structured:
-                self.call_from_thread(self._on_parse_success, structured, source)
-        except Exception as e:
-            if not worker.is_cancelled:
-                self.call_from_thread(self._on_parse_failure, str(e))
+    async def _dispatch_parse(self, source: str) -> None:
+        """Async Textual worker that delegates document parsing to the
+        Presenter (which talks to Celery in a background thread)."""
+
+        def on_progress(status: TaskStatus, _payload: Any) -> None:
+            if status == TaskStatus.STARTED:
+                self.write_chat_message(
+                    "[italic dim]Docling parser is running...[/italic dim]",
+                    persist=False,
+                )
+
+        def on_complete(status: TaskStatus, payload: Any) -> None:
+            if status == TaskStatus.SUCCESS:
+                self._on_parse_success(payload, source)
+            elif status == TaskStatus.FAILURE:
+                if isinstance(payload, str):
+                    self._on_parse_failure(payload)
+                else:
+                    self._on_parse_failure(str(payload))
+            elif status == TaskStatus.REVOKED:
+                self._on_parse_failure("Parse was cancelled.")
+            self._active_parse_handle = None
+
+        await self.presenter.parse_document(
+            source=source,
+            on_progress=on_progress,
+            on_complete=on_complete,
+        )
 
     def _on_parse_success(self, structured: StructuredDocument, source: str) -> None:
         self.is_parsing = False
@@ -742,16 +801,66 @@ class SqwakvoxApp(App[None]):
         )
         self.write_agent_response("[italic dim]Agent is thinking (via LangChain)...[/italic dim]")
 
-        self.run_worker(
-            lambda: self._execute_agent_background(selected_model, api_key, user_query),
-            thread=True,
+        # Dispatch the agent execution as an async Textual worker.
+        self._active_agent_handles[user_query] = self.run_worker(
+            self._dispatch_agent(selected_model, api_key, user_query),
             name="any_agent_worker",
         )
 
-    def _execute_agent_background(self, model_id: str, api_key: str, user_query: str) -> None:
-        data_store = self.controller.build_financial_data_store(self.structured_doc)
-        mcp_servers = [cfg for _, cfg in self.mcp_configs]
-        result = self.controller.execute_agent(
+    async def _dispatch_agent(
+        self, model_id: str, api_key: str, user_query: str
+    ) -> None:
+        """Async Textual worker that delegates agent execution to the Presenter.
+
+        The flow: first build the financial data store from the parsed doc
+        (also a Celery task), then submit the agent task.  Both are polled
+        by the presenter and callbacks update the UI directly on this loop.
+        """
+
+        # --- Step 1: build the financial data store (Celery task) ---
+        doc = self.structured_doc
+        if doc is None:
+            self._on_agent_failure("No document loaded.")
+            return
+
+        ds_handle = await self.presenter.build_data_store(
+            document=doc,
+            on_error=self._on_agent_failure,
+        )
+        # Wait until the data-store task finishes (callbacks fire on this loop).
+        await ds_handle.wait()
+
+        if ds_handle.status == TaskStatus.SUCCESS:
+            data_store: dict[str, str] = ds_handle.result or {}
+        else:
+            self._on_agent_failure(
+                ds_handle.error or "Data store construction failed."
+            )
+            return
+
+        # --- Step 2: serialise MCP server configs for the broker ---
+        mcp_servers: list[dict[str, Any]] = []
+        for name, cfg in self.mcp_configs:
+            # any_agent MCPParams objects are not JSON-serialisable; we send
+            # their dict representation and let the worker reconstruct them.
+            mcp_servers.append(
+                {"name": name, "config": cfg.__dict__ if hasattr(cfg, "__dict__") else str(cfg)}
+            )
+
+        # --- Step 3: submit the agent task ---
+        def on_progress(status: TaskStatus, _payload: Any) -> None:
+            if status == TaskStatus.STARTED:
+                self.write_chat_message(
+                    "[italic dim]Agent is running...[/italic dim]",
+                    persist=False,
+                )
+
+        def on_complete(_status: TaskStatus, result: AgentResult) -> None:
+            self._handle_agent_result(result, user_query)
+            with contextlib.suppress(KeyError):
+                del self._active_agent_handles[user_query]
+
+        agent_handle = await self.presenter.execute_agent(
             model_id=model_id,
             api_key=api_key,
             user_query=user_query,
@@ -759,11 +868,21 @@ class SqwakvoxApp(App[None]):
             active_document_name=self.active_document_name,
             data_store=data_store,
             mcp_servers=mcp_servers,
+            on_progress=on_progress,
+            on_complete=on_complete,
+            on_error=self._on_agent_failure,
         )
+        self._active_agent_handles[user_query] = agent_handle
 
+        # Wait for the agent task to finish.  on_complete (which calls
+        # _handle_agent_result) fires before wait() returns.
+        await agent_handle.wait()
+
+    def _handle_agent_result(self, result: AgentResult, user_query: str) -> None:
+        """Process the agent result (mirrors the old _execute_agent_background)."""
         if result.is_blocked:
             logger.info("Agent result: blocked — %s", result.blocked_reason)
-            self.call_from_thread(self._on_agent_blocked, result.blocked_reason)
+            self._on_agent_blocked(result.blocked_reason)
             return
 
         if result.pii_redacted_query:
@@ -773,7 +892,7 @@ class SqwakvoxApp(App[None]):
 
         if not result.success:
             logger.info("Agent result: failure — %s", result.error_message)
-            self.call_from_thread(self._on_agent_failure, result.error_message)
+            self._on_agent_failure(result.error_message)
             return
 
         logger.info("Agent result: success — %d chars, delivering to TUI", len(result.response))
@@ -789,7 +908,8 @@ class SqwakvoxApp(App[None]):
                 self.write_chat_message(f"  [yellow]⚠[/yellow] {discrepancy}", persist=True)
                 self.write_agent_response(f"  [yellow]⚠[/yellow] {discrepancy}")
 
-        self.call_from_thread(self._on_agent_success, result.response, user_query)
+        self._on_agent_success(result.response, user_query)
+
 
     def _on_agent_success(self, response: str, query: str) -> None:
         self.write_chat_message(f"[bold green]Agent:[/bold green] {response}", persist=True)
