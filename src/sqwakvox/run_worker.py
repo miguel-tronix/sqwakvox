@@ -16,6 +16,7 @@ worker in one terminal, then launch the TUI in another::
     Terminal 1:  python -m sqwakvox.run_worker
     Terminal 2:  python -m sqwakvox
 """
+
 from __future__ import annotations
 
 import argparse

@@ -8,6 +8,7 @@ with the standard Celery environment variables if you need something else::
 
 Tasks are auto-discovered from the :mod:`sqwakvox.backend.tasks` module.
 """
+
 from __future__ import annotations
 
 import os

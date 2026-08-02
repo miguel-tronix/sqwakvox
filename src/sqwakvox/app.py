@@ -28,11 +28,12 @@ from textual.widgets import (
     Tab,
     Tabs,
 )
+from textual.worker import Worker
 
 from sqwakvox.controller import AgentResult, extract_message
 from sqwakvox.guardrails import AuditLogger
 from sqwakvox.models import ModelProvider, StructuredDocument
-from sqwakvox.presenter import Presenter, TaskHandle, TaskStatus
+from sqwakvox.presenter import Presenter, TaskStatus
 from sqwakvox.renderer import DocumentRenderPane
 from sqwakvox.telemetry import get_telemetry
 
@@ -262,8 +263,8 @@ class SqwakvoxApp(App[None]):
     def __init__(self, presenter: Presenter | None = None) -> None:
         super().__init__()
         self.presenter = presenter or Presenter()
-        self._active_parse_handle: TaskHandle | None = None
-        self._active_agent_handles: dict[str, TaskHandle] = {}
+        self._active_parse_handle: Worker[None] | None = None
+        self._active_agent_handles: dict[str, Worker[None]] = {}
         self.doc_context: str = ""
         self.structured_doc: StructuredDocument | None = None
         self.ingestion_history: list[str] = []
@@ -609,9 +610,7 @@ class SqwakvoxApp(App[None]):
             name="cross_validate_worker",
         )
 
-    async def _dispatch_cross_validate(
-        self, doc: StructuredDocument
-    ) -> None:
+    async def _dispatch_cross_validate(self, doc: StructuredDocument) -> None:
         """Async Textual worker: cross-validate the parsed document tables."""
 
         def on_complete(status: TaskStatus, results: Any) -> None:
@@ -623,8 +622,10 @@ class SqwakvoxApp(App[None]):
                             f"sums to {expected} (actual: {actual:.2f})"
                         )
                     else:
-                        msg = f"  [red]✗[/red] Column '{col_name}' " \
-                              f"expected {expected} but got {actual:.2f}"
+                        msg = (
+                            f"  [red]✗[/red] Column '{col_name}' "
+                            f"expected {expected} but got {actual:.2f}"
+                        )
                     self.write_chat_message(msg, persist=True)
                     self.write_agent_response(msg)
             elif status == TaskStatus.FAILURE:
@@ -634,15 +635,20 @@ class SqwakvoxApp(App[None]):
                     persist=True,
                 )
 
-        await self.presenter.cross_validate(
-            document=doc,
-            on_complete=on_complete,
-            on_error=lambda err: self.write_chat_message(
-                f"[bold red]Cross-validation error:[/bold red] {escape(extract_message(err))}",
+        try:
+            await self.presenter.cross_validate(
+                document=doc,
+                on_complete=on_complete,
+                on_error=lambda err: self.write_chat_message(
+                    f"[bold red]Cross-validation error:[/bold red] {escape(extract_message(err))}",
+                    persist=True,
+                ),
+            )
+        except Exception as exc:
+            self.write_chat_message(
+                f"[bold red]Cross-validation error:[/bold red] {escape(extract_message(str(exc)))}",
                 persist=True,
-            ),
-        )
-
+            )
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn-browse":
@@ -706,21 +712,25 @@ class SqwakvoxApp(App[None]):
 
         def on_complete(status: TaskStatus, payload: Any) -> None:
             if status == TaskStatus.SUCCESS:
-                self._on_parse_success(payload, source)
-            elif status == TaskStatus.FAILURE:
-                if isinstance(payload, str):
-                    self._on_parse_failure(payload)
+                if payload is None:
+                    self._on_parse_failure("Parse was cancelled.")
                 else:
-                    self._on_parse_failure(str(payload))
-            elif status == TaskStatus.REVOKED:
+                    self._on_parse_success(payload, source)
+            elif status == TaskStatus.FAILURE:
+                self._on_parse_failure(payload if isinstance(payload, str) else str(payload))
+            elif status in (TaskStatus.REVOKED, TaskStatus.CANCELLED):
                 self._on_parse_failure("Parse was cancelled.")
             self._active_parse_handle = None
 
-        await self.presenter.parse_document(
-            source=source,
-            on_progress=on_progress,
-            on_complete=on_complete,
-        )
+        try:
+            await self.presenter.parse_document(
+                source=source,
+                on_progress=on_progress,
+                on_complete=on_complete,
+            )
+        except Exception as exc:
+            self._active_parse_handle = None
+            self._on_parse_failure(str(exc))
 
     def _on_parse_success(self, structured: StructuredDocument, source: str) -> None:
         self.is_parsing = False
@@ -807,9 +817,7 @@ class SqwakvoxApp(App[None]):
             name="any_agent_worker",
         )
 
-    async def _dispatch_agent(
-        self, model_id: str, api_key: str, user_query: str
-    ) -> None:
+    async def _dispatch_agent(self, model_id: str, api_key: str, user_query: str) -> None:
         """Async Textual worker that delegates agent execution to the Presenter.
 
         The flow: first build the financial data store from the parsed doc
@@ -823,29 +831,27 @@ class SqwakvoxApp(App[None]):
             self._on_agent_failure("No document loaded.")
             return
 
-        ds_handle = await self.presenter.build_data_store(
-            document=doc,
-            on_error=self._on_agent_failure,
-        )
-        # Wait until the data-store task finishes (callbacks fire on this loop).
-        await ds_handle.wait()
+        try:
+            ds_handle = await self.presenter.build_data_store(
+                document=doc,
+                on_error=self._on_agent_failure,
+            )
+            # Wait until the data-store task finishes (callbacks fire on this loop).
+            await ds_handle.wait()
+        except Exception as exc:
+            self._on_agent_failure(str(exc))
+            return
 
         if ds_handle.status == TaskStatus.SUCCESS:
             data_store: dict[str, str] = ds_handle.result or {}
         else:
-            self._on_agent_failure(
-                ds_handle.error or "Data store construction failed."
-            )
+            # The failure was already surfaced to the user via on_error.
             return
 
         # --- Step 2: serialise MCP server configs for the broker ---
-        mcp_servers: list[dict[str, Any]] = []
-        for name, cfg in self.mcp_configs:
-            # any_agent MCPParams objects are not JSON-serialisable; we send
-            # their dict representation and let the worker reconstruct them.
-            mcp_servers.append(
-                {"name": name, "config": cfg.__dict__ if hasattr(cfg, "__dict__") else str(cfg)}
-            )
+        # any_agent MCP configs are Pydantic models; model_dump() yields a
+        # broker-safe dict that the worker rehydrates into MCPParams.
+        mcp_servers: list[dict[str, Any]] = [cfg.model_dump() for _, cfg in self.mcp_configs]
 
         # --- Step 3: submit the agent task ---
         def on_progress(status: TaskStatus, _payload: Any) -> None:
@@ -855,24 +861,30 @@ class SqwakvoxApp(App[None]):
                     persist=False,
                 )
 
-        def on_complete(_status: TaskStatus, result: AgentResult) -> None:
-            self._handle_agent_result(result, user_query)
+        def on_complete(status: TaskStatus, result: Any) -> None:
+            if status == TaskStatus.SUCCESS and isinstance(result, AgentResult):
+                self._handle_agent_result(result, user_query)
+            elif status == TaskStatus.REVOKED:
+                self._on_agent_failure("Agent task was cancelled.")
             with contextlib.suppress(KeyError):
                 del self._active_agent_handles[user_query]
 
-        agent_handle = await self.presenter.execute_agent(
-            model_id=model_id,
-            api_key=api_key,
-            user_query=user_query,
-            doc_context=self.doc_context,
-            active_document_name=self.active_document_name,
-            data_store=data_store,
-            mcp_servers=mcp_servers,
-            on_progress=on_progress,
-            on_complete=on_complete,
-            on_error=self._on_agent_failure,
-        )
-        self._active_agent_handles[user_query] = agent_handle
+        try:
+            agent_handle = await self.presenter.execute_agent(
+                model_id=model_id,
+                api_key=api_key,
+                user_query=user_query,
+                doc_context=self.doc_context,
+                active_document_name=self.active_document_name,
+                data_store=data_store,
+                mcp_servers=mcp_servers,
+                on_progress=on_progress,
+                on_complete=on_complete,
+                on_error=self._on_agent_failure,
+            )
+        except Exception as exc:
+            self._on_agent_failure(str(exc))
+            return
 
         # Wait for the agent task to finish.  on_complete (which calls
         # _handle_agent_result) fires before wait() returns.
@@ -909,7 +921,6 @@ class SqwakvoxApp(App[None]):
                 self.write_agent_response(f"  [yellow]⚠[/yellow] {discrepancy}")
 
         self._on_agent_success(result.response, user_query)
-
 
     def _on_agent_success(self, response: str, query: str) -> None:
         self.write_chat_message(f"[bold green]Agent:[/bold green] {response}", persist=True)

@@ -14,6 +14,7 @@ Responsibilities
 * Provide an :meth:`asyncio.Event`-style ``wait()`` on every handle so views
   can ``await handle.wait()`` before proceeding.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -66,10 +67,6 @@ class TaskHandle:
         return self.status
 
 
-class BackendUnavailableError(RuntimeError):
-    """Raised when the Celery broker/result-backend is unreachable."""
-
-
 class Presenter:
     """Async facade over the Celery backend.
 
@@ -99,6 +96,11 @@ class Presenter:
         ``on_progress`` fires with every poll (status + raw payload).
         ``on_complete`` fires once with the final status + result.
         ``on_error`` fires with a human-readable error string on failure.
+
+        If the broker/result-backend is unreachable the task is never
+        submitted; the returned handle resolves immediately to
+        :attr:`TaskStatus.FAILURE` and both ``on_error`` and ``on_complete``
+        are invoked with a human-readable message.
         """
         from sqwakvox.backend import tasks as tasks_mod
 
@@ -108,15 +110,27 @@ class Presenter:
 
         loop = asyncio.get_event_loop()
 
-        # In eager mode (no broker running), apply_async runs synchronously.
-        # In production, defer the (potentially blocking) broker call to a
-        # thread executor so the asyncio loop isn't blocked.
-        if celery_app.conf.task_always_eager:
-            result = fn.apply_async(args=args or [], kwargs=kwargs or {})
-        else:
-            result = await loop.run_in_executor(
-                None,
-                lambda: fn.apply_async(args=args or [], kwargs=kwargs or {}),
+        try:
+            # In eager mode (no broker running), apply_async runs synchronously
+            # and the task body's own exceptions propagate to the caller.
+            # In production, defer the (potentially blocking) broker call to a
+            # thread executor so the asyncio loop isn't blocked, and treat a
+            # failure to submit as a backend-unavailable signal.
+            if celery_app.conf.task_always_eager:
+                result = fn.apply_async(args=args or [], kwargs=kwargs or {})
+            else:
+                result = await loop.run_in_executor(
+                    None,
+                    lambda: fn.apply_async(args=args or [], kwargs=kwargs or {}),
+                )
+        except Exception as exc:
+            if celery_app.conf.task_always_eager:
+                raise
+            logger.error("Failed to submit Celery task %s: %s", task_name, exc)
+            return self._failed_handle(
+                task_name,
+                on_complete=on_complete,
+                on_error=on_error,
             )
 
         handle = TaskHandle(task_id=result.id, task_name=task_name)
@@ -130,6 +144,33 @@ class Presenter:
             )
         )
         self._active_polls[result.id] = poll_task
+        return handle
+
+    def _failed_handle(
+        self,
+        task_name: str,
+        *,
+        on_complete: Callable[[TaskStatus, Any], None] | None,
+        on_error: Callable[[str], None] | None,
+    ) -> TaskHandle:
+        """Build a handle that resolves immediately to FAILURE.
+
+        Used when a task could not be submitted (e.g. the broker is down) so
+        callers awaiting ``handle.wait()`` and their callbacks still fire.
+        """
+        message = (
+            f"Backend unavailable: could not submit task '{task_name}'. "
+            "Is the Celery worker and Redis broker running? "
+            "Start it with: python -m sqwakvox.run_worker"
+        )
+        handle = TaskHandle(task_id="", task_name=task_name)
+        handle.status = TaskStatus.FAILURE
+        handle.error = message
+        if on_error is not None:
+            on_error(message)
+        if on_complete is not None:
+            on_complete(TaskStatus.FAILURE, message)
+        handle._event.set()
         return handle
 
     # ------------------------------------------------------------------ #
@@ -153,10 +194,8 @@ class Presenter:
                         TaskStatus.SUCCESS,
                         StructuredDocument.model_validate(payload),
                     )
-                elif status == TaskStatus.SUCCESS:
-                    on_complete(status, None)
                 else:
-                    on_complete(status, None)
+                    on_complete(status, payload)
 
         return await self.submit_task(
             "convert_document",
@@ -213,13 +252,7 @@ class Presenter:
                 if status == TaskStatus.SUCCESS and isinstance(payload, dict):
                     on_complete(TaskStatus.SUCCESS, AgentResult(**payload))
                 else:
-                    on_complete(
-                        status,
-                        AgentResult(
-                            success=False,
-                            error_message="task did not complete",
-                        ),
-                    )
+                    on_complete(status, payload)
 
         return await self.submit_task(
             "execute_agent",
@@ -244,9 +277,7 @@ class Presenter:
         """Revoke a running task.  Returns True if the revoke was sent."""
         loop = asyncio.get_event_loop()
         try:
-            await loop.run_in_executor(
-                None, lambda: celery_app.control.revoke(task_id)
-            )
+            await loop.run_in_executor(None, lambda: celery_app.control.revoke(task_id))
         except Exception as exc:
             logger.warning("Failed to revoke task %s: %s", task_id, exc)
             return False
@@ -326,16 +357,8 @@ class Presenter:
             if on_complete is not None:
                 on_complete(TaskStatus.CANCELLED, None)
             raise
-        except BackendUnavailableError:
-            handle.status = TaskStatus.FAILURE
-            handle.error = "Backend unavailable"
-            if on_error is not None:
-                on_error("Backend unavailable")
-            raise
         except Exception as exc:
-            logger.warning(
-                "Polling loop for %s errored: %s", handle.task_id, exc
-            )
+            logger.warning("Polling loop for %s errored: %s", handle.task_id, exc)
             handle.status = TaskStatus.FAILURE
             handle.error = str(exc)
             if on_error is not None:

@@ -8,12 +8,15 @@ through the broker) ensures Celery can always pickle the call graph.
 The presenter talks to these tasks via ``AsyncResult`` polling.  Every task
 returns a JSON-serialisable result (Pydantic ``model_dump`` for documents).
 """
+
 from __future__ import annotations
 
 import logging
 from typing import Any
 
+from any_agent.config import MCPParams
 from celery import shared_task
+from pydantic import TypeAdapter
 
 from sqwakvox.backend.celery_app import celery_app  # noqa: F401 — registers tasks
 from sqwakvox.controller import AgentResult, AppController
@@ -21,6 +24,8 @@ from sqwakvox.guardrails import FinancialValue
 from sqwakvox.models import StructuredDocument
 
 logger = logging.getLogger(__name__)
+
+MCP_SERVERS_ADAPTER: TypeAdapter[list[MCPParams]] = TypeAdapter(list[MCPParams])
 
 
 def _get_controller() -> AppController:
@@ -32,8 +37,8 @@ def _get_controller() -> AppController:
     return AppController()
 
 
-@shared_task(bind=True, name="sqwakvox.backend.tasks.convert_document")
-def convert_document(self, source: str) -> dict[str, Any] | None:
+@shared_task(bind=True, name="sqwakvox.backend.tasks.convert_document")  # type: ignore[untyped-decorator]
+def convert_document(self: Any, source: str) -> dict[str, Any] | None:
     """Parse *source* (path/URL) into a :class:`StructuredDocument`.
 
     Returns the document as a plain dict (``model_dump``) so it can travel
@@ -47,7 +52,7 @@ def convert_document(self, source: str) -> dict[str, Any] | None:
     # ``is_revoked`` requires a result backend, so guard against environments
     # where it's unavailable (e.g. eager mode without a broker).
     try:
-        revoked = self.is_revoked()
+        revoked = bool(self.is_revoked())
     except Exception:
         revoked = False
     if revoked:
@@ -56,7 +61,7 @@ def convert_document(self, source: str) -> dict[str, Any] | None:
 
     def is_cancelled() -> bool:
         try:
-            return self.is_revoked()
+            return bool(self.is_revoked())
         except Exception:
             return False
 
@@ -66,8 +71,11 @@ def convert_document(self, source: str) -> dict[str, Any] | None:
     return doc.model_dump()
 
 
-@shared_task(bind=True, name="sqwakvox.backend.tasks.build_financial_data_store")
-def build_financial_data_store(self, document_dump: dict[str, Any]) -> dict[str, str]:  # noqa: ARG001
+@shared_task(bind=True, name="sqwakvox.backend.tasks.build_financial_data_store")  # type: ignore[untyped-decorator]
+def build_financial_data_store(
+    self: Any,  # noqa: ARG001
+    document_dump: dict[str, Any],
+) -> dict[str, str]:
     """Return a JSON-serialisable mapping ``{label: raw_str}``.
 
     ``FinancialValue`` is a float subclass; we serialise it back to its raw
@@ -83,17 +91,20 @@ def build_financial_data_store(self, document_dump: dict[str, Any]) -> dict[str,
     }
 
 
-@shared_task(bind=True, name="sqwakvox.backend.tasks.cross_validate")
-def cross_validate(self, document_dump: dict[str, Any]) -> list[tuple[str, float, float, bool]]:  # noqa: ARG001
+@shared_task(bind=True, name="sqwakvox.backend.tasks.cross_validate")  # type: ignore[untyped-decorator]
+def cross_validate(
+    self: Any,  # noqa: ARG001
+    document_dump: dict[str, Any],
+) -> list[tuple[str, float, float, bool]]:
     """Run financial column cross-validation on the parsed document tables."""
     controller = _get_controller()
     doc = StructuredDocument.model_validate(document_dump)
     return controller.cross_validate(doc)
 
 
-@shared_task(bind=True, name="sqwakvox.backend.tasks.execute_agent")
+@shared_task(bind=True, name="sqwakvox.backend.tasks.execute_agent")  # type: ignore[untyped-decorator]
 def execute_agent(
-    self,
+    self: Any,
     model_id: str,
     api_key: str,
     user_query: str,
@@ -104,8 +115,9 @@ def execute_agent(
 ) -> dict[str, Any]:
     """Execute the LLM agent for a user chat query.
 
-    The ``mcp_server`` list is JSON-serialisable configuration (name + any_agent
-    MCPParams dumps); the controller rehydrates them on its side.
+    ``mcp_servers`` is a broker-safe ``model_dump()`` list of any_agent MCP
+    configs; we rehydrate them back into ``MCPParams`` here before handing
+    them to the controller.
     """
     controller = _get_controller()
 
@@ -121,17 +133,15 @@ def execute_agent(
         return result.__dict__
 
     # Rehydrate FinancialValue objects — the presenter sends back strings.
-    from collections.abc import Mapping
-    hydrated_store: Mapping[str, FinancialValue] = {
-        label: FinancialValue(0.0, unit="number", raw_str=raw)
-        for label, raw in data_store.items()
-    }
     # Parse the numeric portion so guardrail cross-checks have real values.
     from sqwakvox.guardrails import parse_financial_value
+
     hydrated_store = {
         label: (parse_financial_value(raw) or FinancialValue(0.0, raw_str=raw))
         for label, raw in data_store.items()
     }
+
+    hydrated_mcp = MCP_SERVERS_ADAPTER.validate_python(mcp_servers) if mcp_servers else None
 
     result = controller.execute_agent(
         model_id=model_id,
@@ -140,6 +150,6 @@ def execute_agent(
         doc_context=doc_context,
         active_document_name=active_document_name,
         data_store=hydrated_store,
-        mcp_servers=mcp_servers,
+        mcp_servers=hydrated_mcp,
     )
     return result.__dict__
