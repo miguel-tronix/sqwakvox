@@ -30,26 +30,48 @@ Sqwakvox is a terminal user interface application for financial document analysi
 
 ## Architecture
 
+Sqwakvox uses a model-view-presenter (MVP) layout decoupled by Celery. The
+Textual TUI (view) never blocks on heavy work — it submits Celery tasks through
+the presenter and polls for progress, while a separate worker process runs
+document ingestion, cross-validation, and agent execution.
+
 ```
-┌──────────────────────────────────────────────────────────┐
-│                   Sqwakvox TUI (Textual)                  │
-│  ┌──────────┐  ┌──────────────────┐  ┌────────────────┐ │
-│  │ Sidebar  │  │ Document Render  │  │   Chat Log     │ │
-│  │ - Source │  │ - Markdown       │  │                │ │
-│  │ - Model  │  │ - Tables (Unicode)│  │                │ │
-│  │ - API Key│  │ - Sparklines     │  │                │ │
-│  │ - History│  │                  │  │                │ │
-│  └────┬─────┘  └────────┬─────────┘  └───────┬────────┘ │
-│       │                 │                     │          │
-└───────┼─────────────────┼─────────────────────┼──────────┘
-        │                 │                     │
-        ▼                 ▼                     ▼
-┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐
-│  Docling     │  │ Financial    │  │  any-agent (LangChain)│
-│  Converter   │  │ Rule Engine  │  │  + any-guardrail      │
-│  (PDF→MD)    │  │ (Cross-Val)  │  │  + PII Redactor       │
-└──────────────┘  └──────────────┘  └──────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                    View — Textual TUI (app.py)               │
+│  3-pane interface: sidebar / document render / chat log      │
+└──────────────────────────┬──────────────────────────────────┘
+                           │ submit + poll (AsyncResult)
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│            Presenter (presenter.py)                          │
+│  async facade: TaskHandle, callbacks, revoke, wait()         │
+└──────────────────────────┬──────────────────────────────────┘
+                           │ Redis broker + result backend
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│        Backend — Celery worker (run_worker.py)               │
+│  sqwakvox.backend.tasks → AppController (controller.py)      │
+│  Docling │ Financial Rule Engine │ any-agent + guardrails    │
+└─────────────────────────────────────────────────────────────┘
 ```
+
+### Running the backend
+
+The TUI and the worker are separate processes connected by a Redis broker.
+Start Redis, then the worker, then the TUI:
+
+```bash
+# Terminal 1 — Celery worker
+python -m sqwakvox.run_worker
+# or with uv: uv run python -m sqwakvox.run_worker
+
+# Terminal 2 — TUI
+sqwakvox
+```
+
+The broker and result-backend default to `redis://localhost:6379`. Override
+them with `SQWAKVOX_CELERY_BROKER` and `SQWAKVOX_CELERY_BACKEND`. For offline
+testing (no Redis), set `SQWAKVOX_CELERY_EAGER=1` to run tasks in-process.
 
 ## Installation
 
