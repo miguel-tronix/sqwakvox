@@ -46,11 +46,15 @@ def main() -> None:
     setup_telemetry()
     atexit.register(shutdown_telemetry)
     logging.info("Sqwakvox application starting...")
-    from sqwakvox.controller import AppController
+    from sqwakvox.presenter import Presenter
 
-    controller = AppController()
-    app = SqwakvoxApp(controller=controller)
+    presenter = Presenter()
+    app = SqwakvoxApp(presenter=presenter)
     app.run()
+    # Clean up the presenter's polling tasks on shutdown.
+    import asyncio
+
+    asyncio.get_event_loop().run_until_complete(presenter.close())
 
 
 if __name__ == "__main__":
