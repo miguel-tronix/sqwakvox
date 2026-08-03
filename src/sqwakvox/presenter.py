@@ -125,10 +125,13 @@ class Presenter:
             if celery_app.conf.task_always_eager:
                 result = fn.apply_async(args=args or [], kwargs=kwargs or {})
             else:
+                # Use the task's registered name (``fn.name``), not the short
+                # lookup key: the worker registers tasks under their full
+                # ``sqwakvox.backend.tasks.*`` names.
                 result = await loop.run_in_executor(
                     None,
                     lambda: celery_app.send_task(
-                        task_name, args=args or [], kwargs=kwargs or {}
+                        fn.name, args=args or [], kwargs=kwargs or {}
                     ),
                 )
         except Exception as exc:
