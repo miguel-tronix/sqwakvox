@@ -232,6 +232,7 @@ def test_app_controller_execute_agent_with_mcp(
         context="Context",
         prompt="Hello",
         env_var="OPENAI_API_KEY",
-        mcp_servers=mcp_servers
+        mcp_servers=mcp_servers,
+        thread_id=None,
     )
 
