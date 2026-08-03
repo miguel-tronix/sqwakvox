@@ -268,6 +268,7 @@ class AppController:
         active_document_name: str,
         data_store: Mapping[str, float | FinancialValue],
         mcp_servers: list[Any] | None = None,
+        thread_id: str | None = None,
     ) -> AgentResult:
         tm = get_telemetry()
         start_time = time.monotonic()
@@ -328,6 +329,7 @@ class AppController:
                     prompt=redacted_query,
                     env_var=env_var,
                     mcp_servers=mcp_servers,
+                    thread_id=thread_id,
                 )
 
                 logger.info("Agent raw response received: %d chars", len(agent_response))
