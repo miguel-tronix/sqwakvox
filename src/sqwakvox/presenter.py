@@ -116,12 +116,20 @@ class Presenter:
             # In production, defer the (potentially blocking) broker call to a
             # thread executor so the asyncio loop isn't blocked, and treat a
             # failure to submit as a backend-unavailable signal.
+            #
+            # Submit via ``celery_app.send_task`` (not the shared task's
+            # ``apply_async``): celery's current_app is thread-local, and in
+            # the executor thread the shared task resolves to the broker-less
+            # default app (pyamqp on port 5672) -> Connection refused.  The
+            # explicit app always carries our Redis broker URL.
             if celery_app.conf.task_always_eager:
                 result = fn.apply_async(args=args or [], kwargs=kwargs or {})
             else:
                 result = await loop.run_in_executor(
                     None,
-                    lambda: fn.apply_async(args=args or [], kwargs=kwargs or {}),
+                    lambda: celery_app.send_task(
+                        task_name, args=args or [], kwargs=kwargs or {}
+                    ),
                 )
         except Exception as exc:
             if celery_app.conf.task_always_eager:

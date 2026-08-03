@@ -125,8 +125,8 @@ async def test_submit_task_backend_unavailable() -> None:
     presenter = Presenter()
     try:
         with patch.object(
-            tasks_mod.convert_document,
-            "apply_async",
+            celery_app,
+            "send_task",
             side_effect=ConnectionError("broker down"),
         ):
             handle = await presenter.submit_task(
