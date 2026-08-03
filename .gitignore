@@ -15,3 +15,7 @@ sqwakvox_telemetry.jsonl
 *.jsonl
 # VSCode
 .vscode
+
+# Celery beat runtime artifacts
+celerybeat-schedule
+celerybeat.pid
