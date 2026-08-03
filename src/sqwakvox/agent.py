@@ -20,6 +20,10 @@ from sqwakvox.telemetry import trace_span
 
 logger = logging.getLogger(__name__)
 
+# Conversation memory lives in a dedicated Redis logical DB, separate from the
+# Celery broker (db 0) and result backend (db 1).  Override if needed.
+MEMORY_REDIS_URL = os.environ.get("SQWAKVOX_MEMORY_REDIS_URL", "redis://localhost:6379/2")
+
 CLEANUP_TIMEOUT_SECONDS = 30.0
 MAX_STARTUP_RETRIES = 1
 # Cap LangGraph agent iterations to prevent runaway loops when MCP tools fail.
@@ -79,6 +83,40 @@ UNIFIED_USER_PROMPT_TEMPLATE = Template(
 )
 
 
+_redis_checkpointer: Any | None = None
+_checkpointer_lock = threading.Lock()
+
+
+def _get_redis_checkpointer() -> Any | None:
+    """Return a lazily-initialised LangGraph checkpointer backed by Redis.
+
+    Gives the react agent conversational memory across turns within a
+    ``thread_id`` (one thread per active document).  Uses the plain-Redis
+    :class:`~sqwakvox.backend.redis_checkpointer.RedisCheckpointer`, which
+    needs no RediSearch module.  The saver is created once per process.
+
+    Returns ``None`` when Redis is unreachable so agent runs degrade to the
+    previous stateless behaviour instead of failing hard.
+    """
+    global _redis_checkpointer
+    if _redis_checkpointer is None:
+        with _checkpointer_lock:
+            if _redis_checkpointer is None:
+                try:
+                    from sqwakvox.backend.redis_checkpointer import RedisCheckpointer
+
+                    saver: Any = RedisCheckpointer(redis_url=MEMORY_REDIS_URL)
+                except Exception as exc:
+                    logger.warning(
+                        "Redis memory checkpointer unavailable (%s); agent will run stateless",
+                        exc,
+                    )
+                    return None
+                _redis_checkpointer = saver
+                logger.info("Redis conversation memory enabled (%s)", MEMORY_REDIS_URL)
+    return _redis_checkpointer
+
+
 class AnyAgentOrchestrator:
     _lock = threading.Lock()
 
@@ -132,6 +170,7 @@ class AnyAgentOrchestrator:
         prompt: str,
         env_var: str,
         mcp_servers: list[MCPParams] | None = None,
+        thread_id: str | None = None,
     ) -> str:
         instructions, formatted_prompt = cls.render_prompt(
             model_id=model_id,
@@ -139,10 +178,15 @@ class AnyAgentOrchestrator:
             prompt=prompt,
         )
 
+        # Attach the Redis checkpointer only when the caller supplies a thread
+        # id, so existing stateless call sites (and the no-tools direct path)
+        # keep their current behaviour.
+        checkpointer = _get_redis_checkpointer() if thread_id else None
         config = AgentConfig(
             model_id=model_id,
             instructions=instructions,
             tools=list(mcp_servers) if mcp_servers else [],
+            agent_args={"checkpointer": checkpointer} if checkpointer else None,
         )
         logger.info("Starting any-agent execution — model: %s", model_id)
         with (
@@ -157,6 +201,7 @@ class AnyAgentOrchestrator:
                 config=config,
                 prompt=formatted_prompt,
                 raw_mcp_servers=mcp_servers or [],
+                thread_id=thread_id,
             )
 
     @classmethod
@@ -165,6 +210,7 @@ class AnyAgentOrchestrator:
         config: AgentConfig,
         prompt: str,
         raw_mcp_servers: list[MCPParams],
+        thread_id: str | None = None,
     ) -> str:
         """Create agent and run it inside a single asyncio event loop.
 
@@ -183,6 +229,7 @@ class AnyAgentOrchestrator:
                     config=config,
                     prompt=prompt,
                     raw_mcp_servers=raw_mcp_servers,
+                    thread_id=thread_id,
                 )
             )
         except BaseException as exc:
@@ -214,6 +261,7 @@ class AnyAgentOrchestrator:
         config: AgentConfig,
         prompt: str,
         raw_mcp_servers: list[MCPParams],
+        thread_id: str | None = None,
     ) -> str:
         """Async body: create agent (or direct model call if no tools), then run."""
         # When no MCP tools are configured, skip the LangGraph react-agent
@@ -242,10 +290,15 @@ class AnyAgentOrchestrator:
             {"model_id": config.model_id, "mcp_servers_count": len(raw_mcp_servers)},
         ) as span:
             try:
+                run_config: dict[str, Any] = {
+                    "recursion_limit": MAX_AGENT_RECURSION_LIMIT,
+                }
+                if thread_id:
+                    run_config["configurable"] = {"thread_id": thread_id}
                 trace = await asyncio.wait_for(
                     agent.run_async(
                         prompt,
-                        config={"recursion_limit": MAX_AGENT_RECURSION_LIMIT},
+                        config=run_config,
                     ),
                     timeout=AGENT_RUN_TIMEOUT_SECONDS,
                 )

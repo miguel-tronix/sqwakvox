@@ -878,6 +878,7 @@ class SqwakvoxApp(App[None]):
                 active_document_name=self.active_document_name,
                 data_store=data_store,
                 mcp_servers=mcp_servers,
+                thread_id=self.active_document_name or None,
                 on_progress=on_progress,
                 on_complete=on_complete,
                 on_error=self._on_agent_failure,

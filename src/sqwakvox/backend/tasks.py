@@ -112,6 +112,7 @@ def execute_agent(
     active_document_name: str,
     data_store: dict[str, str],
     mcp_servers: list[dict[str, Any]] | None,
+    thread_id: str | None = None,
 ) -> dict[str, Any]:
     """Execute the LLM agent for a user chat query.
 
@@ -151,5 +152,6 @@ def execute_agent(
         active_document_name=active_document_name,
         data_store=hydrated_store,
         mcp_servers=hydrated_mcp,
+        thread_id=thread_id,
     )
     return result.__dict__
