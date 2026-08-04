@@ -39,9 +39,15 @@ celery_app.conf.update(
     # Don't ACK until the task body finishes; lets the presenter poll for
     # state transitions (PENDING -> STARTED -> SUCCESS/FAILURE).
     task_acks_late=True,
-    # A hard kill after 10 min protects the worker from runaway agents.
-    task_time_limit=600,
-    task_soft_time_limit=540,
+    # Generous limits for slow hardware: document OCR/parsing (docling) on an
+    # old laptop routinely exceeds the old 9-10 min budget.  The soft limit
+    # (30 min) raises SoftTimeLimitExceeded inside the task so it can fail
+    # gracefully; the hard limit (31 min) is the SIGKILL backstop.  Override
+    # via env if a particular machine needs even more headroom.
+    task_time_limit=int(os.environ.get("SQWAKVOX_CELERY_TASK_TIME_LIMIT", "1860")),
+    task_soft_time_limit=int(
+        os.environ.get("SQWAKVOX_CELERY_TASK_SOFT_TIME_LIMIT", "1800")
+    ),
     worker_prefetch_multiplier=1,
     worker_max_tasks_per_child=20,
 )

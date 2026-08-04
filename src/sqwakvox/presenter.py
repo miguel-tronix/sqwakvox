@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import os
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -34,6 +35,12 @@ from sqwakvox.models import StructuredDocument
 logger = logging.getLogger(__name__)
 
 POLL_INTERVAL = 0.5  # seconds
+# Absolute ceiling on how long the presenter will poll a single task for,
+# matching the Celery ``task_time_limit`` (1860 s hard kill, see
+# ``backend/celery_app.py``) plus a grace margin.  Override via
+# ``SQWAKVOX_PRESENTER_POLL_TIMEOUT`` for longer documents or to tune for a
+# different environment.
+DEFAULT_POLL_TIMEOUT = float(os.environ.get("SQWAKVOX_PRESENTER_POLL_TIMEOUT", 1920))
 
 
 class TaskStatus(StrEnum):
@@ -310,9 +317,20 @@ class Presenter:
         on_progress: Callable[[TaskStatus, Any], None] | None,
         on_complete: Callable[[TaskStatus, Any], None] | None,
         on_error: Callable[[str], None] | None,
+        poll_timeout: float | None = None,
     ) -> None:
         """Poll *result* until it reaches a terminal state, then resolve the
-        handle's event so callers awaiting ``handle.wait()`` wake up."""
+        handle's event so callers awaiting ``handle.wait()`` wake up.
+
+        ``poll_timeout`` is an absolute ceiling on polling duration (seconds).
+        It defaults to :data:`DEFAULT_POLL_TIMEOUT` (660 s — Celery's 600 s
+        hard timeout plus a grace margin).  If the task never reaches a
+        terminal state within this window, the handle is marked as FAILURE
+        with a timeout message so the view doesn't hang forever.
+        """
+        deadline = asyncio.get_event_loop().time() + (
+            poll_timeout if poll_timeout is not None else DEFAULT_POLL_TIMEOUT
+        )
         try:
             while True:
                 if result.ready() or result.state in (
@@ -359,8 +377,24 @@ class Presenter:
 
                     break
 
-                # Still running — deliver progress.
-                handle.status = TaskStatus.STARTED
+                # Still running — check the absolute deadline before sleeping.
+                if asyncio.get_event_loop().time() > deadline:
+                    elapsed = DEFAULT_POLL_TIMEOUT if poll_timeout is None else poll_timeout
+                    msg = (
+                        f"Timed out waiting for task {handle.task_name} "
+                        f"({handle.task_id}) after {elapsed:.0f}s. "
+                        "The backend worker may have been killed by its "
+                        "hard time limit, or the result backend is unreachable."
+                    )
+                    logger.error(msg)
+                    handle.status = TaskStatus.FAILURE
+                    handle.error = msg
+                    if on_error is not None:
+                        on_error(msg)
+                    if on_complete is not None:
+                        on_complete(TaskStatus.FAILURE, msg)
+                    break
+
                 if on_progress is not None:
                     on_progress(TaskStatus.STARTED, None)
                 await asyncio.sleep(POLL_INTERVAL)
