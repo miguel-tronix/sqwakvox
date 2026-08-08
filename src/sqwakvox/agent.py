@@ -524,7 +524,12 @@ class AnyAgentOrchestrator:
             return
 
         current_pid = os.getpid()
-        targets = {"mcp_calc_server", "mcp-server-fetch", "mcp-server-sqlite"}
+        targets = {
+            "mcp_calc_server",
+            "mcp-server-fetch",
+            "mcp-server-sqlite",
+            "mcp-ascii-charts",
+        }
         for proc in psutil.process_iter(["pid", "ppid", "cmdline", "name"]):
             try:
                 if proc.pid == current_pid or proc.ppid() != current_pid:
@@ -534,5 +539,12 @@ class AnyAgentOrchestrator:
                 if any(target in joined for target in targets):
                     logger.warning("Killing orphaned MCP child process %s: %s", proc.pid, joined)
                     proc.send_signal(signal.SIGTERM)
+                    # Wrappers like `npx`/`uvx` leave grandchildren (node,
+                    # python) behind; reap the whole tree.
+                    for child in proc.children(recursive=True):
+                        try:
+                            child.send_signal(signal.SIGTERM)
+                        except (psutil.NoSuchProcess, psutil.AccessDenied, OSError):
+                            continue
             except (psutil.NoSuchProcess, psutil.AccessDenied, OSError):
                 continue

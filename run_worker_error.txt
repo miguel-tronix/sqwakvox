@@ -1,0 +1,60 @@
+2026-08-04 11:59:38,387: WARNING/ForkPoolWorker-5] Stage ocr thread did not terminate within 15s. Thread is likely stuck in a blocking call and will be abandoned (resources may leak).
+[2026-08-04 11:59:39,603: ERROR/ForkPoolWorker-5] Output queue closed while emitting from ocr
+[2026-08-04 11:59:39,603: ERROR/ForkPoolWorker-5] Output queue closed while emitting from ocr
+[2026-08-04 11:59:39,603: ERROR/ForkPoolWorker-5] Output queue closed while emitting from ocr
+[2026-08-04 11:59:39,603: ERROR/ForkPoolWorker-5] Output queue closed while emitting from ocr
+[2026-08-04 11:59:44,642: ERROR/ForkPoolWorker-5] Task sqwakvox.backend.tasks.convert_document[4618efc0-905a-4ba8-bfc2-0b70d3a3a66b] raised unexpected: RuntimeError('Pipeline StandardPdfPipeline failed')
+Traceback (most recent call last):
+  File "/home2/app2/sqwakvox/.venv/lib/python3.12/site-packages/docling/pipeline/base_pipeline.py", line 78, in execute
+    conv_res = self._build_document(conv_res)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home2/app2/sqwakvox/.venv/lib/python3.12/site-packages/docling/pipeline/standard_pdf_pipeline.py", line 705, in _build_document
+    out_batch = ctx.output_queue.get_batch(batch_size, timeout=0.05)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home2/app2/sqwakvox/.venv/lib/python3.12/site-packages/docling/pipeline/standard_pdf_pipeline.py", line 162, in get_batch
+    self._not_empty.wait(remaining)
+  File "/usr/lib/python3.12/threading.py", line 359, in wait
+    gotit = waiter.acquire(True, timeout)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home2/app2/sqwakvox/.venv/lib/python3.12/site-packages/billiard/pool.py", line 228, in soft_timeout_sighandler
+    raise SoftTimeLimitExceeded()
+billiard.exceptions.SoftTimeLimitExceeded: SoftTimeLimitExceeded()
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home2/app2/sqwakvox/.venv/lib/python3.12/site-packages/celery/app/trace.py", line 585, in trace_task
+    R = retval = fun(*args, **kwargs)
+                 ^^^^^^^^^^^^^^^^^^^^
+  File "/home2/app2/sqwakvox/.venv/lib/python3.12/site-packages/celery/app/trace.py", line 858, in __protected_call__
+    return self.run(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home2/app2/sqwakvox/src/sqwakvox/backend/tasks.py", line 68, in convert_document
+    doc = controller.convert_document(source, is_cancelled)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home2/app2/sqwakvox/src/sqwakvox/controller.py", line 94, in convert_document
+    result = self.converter.convert(source)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home2/app2/sqwakvox/.venv/lib/python3.12/site-packages/pydantic/_internal/_validate_call.py", line 40, in wrapper_function
+    return wrapper(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home2/app2/sqwakvox/.venv/lib/python3.12/site-packages/pydantic/_internal/_validate_call.py", line 137, in __call__
+    res = self.__pydantic_validator__.validate_python(pydantic_core.ArgsKwargs(args, kwargs))
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home2/app2/sqwakvox/.venv/lib/python3.12/site-packages/docling/document_converter.py", line 395, in convert
+    return next(all_res)
+           ^^^^^^^^^^^^^
+  File "/home2/app2/sqwakvox/.venv/lib/python3.12/site-packages/docling/document_converter.py", line 454, in convert_all
+    for conv_res in conv_res_iter:
+  File "/home2/app2/sqwakvox/.venv/lib/python3.12/site-packages/docling/document_converter.py", line 571, in _convert
+    for item in map(
+  File "/home2/app2/sqwakvox/.venv/lib/python3.12/site-packages/docling/document_converter.py", line 618, in _process_document
+    conv_res = self._execute_pipeline(in_doc, raises_on_error=raises_on_error)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home2/app2/sqwakvox/.venv/lib/python3.12/site-packages/docling/document_converter.py", line 641, in _execute_pipeline
+    conv_res = pipeline.execute(in_doc, raises_on_error=raises_on_error)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home2/app2/sqwakvox/.venv/lib/python3.12/site-packages/docling/pipeline/base_pipeline.py", line 93, in execute
+    raise RuntimeError(f"Pipeline {self.__class__.__name__} failed") from e
+RuntimeError: Pipeline StandardPdfPipeline failed
+

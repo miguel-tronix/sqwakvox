@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from billiard.exceptions import SoftTimeLimitExceeded  # type: ignore[import-untyped]
 from docling.document_converter import DocumentConverter
 
 from sqwakvox.guardrails import (
@@ -60,6 +61,29 @@ def _walk_for_message(obj: object) -> str | None:
             result = _walk_for_message(v)
             if result:
                 return result
+    return None
+
+
+def _unwrap_timeout_cause() -> SoftTimeLimitExceeded | None:
+    """Inspect the current exception chain for a wrapped timeout.
+
+    Docling's ``BasePipeline.execute`` (see
+    ``docling/pipeline/base_pipeline.py``) catches
+    :class:`billiard.exceptions.SoftTimeLimitExceeded` — raised by Celery's
+    worker when the soft time limit fires while blocked inside the OCR
+    thread — and rewraps it as a generic ``RuntimeError``.  This helper walks
+    ``__cause__`` / ``__context__`` of the *currently* handled exception
+    (called from inside an ``except Exception:`` block) and returns the
+    ``SoftTimeLimitExceeded`` if one is found, so callers can re-raise the
+    real cause instead of the opaque wrapper.
+    """
+    import sys
+
+    exc = sys.exc_info()[1]
+    while exc is not None:
+        if isinstance(exc, SoftTimeLimitExceeded):
+            return exc
+        exc = exc.__cause__ or exc.__context__
     return None
 
 
@@ -181,6 +205,23 @@ class AppController:
 
                 return doc
             except Exception:
+                # Docling's base_pipeline catches SoftTimeLimitExceeded
+                # (raised by billiard when the Celery soft time limit fires
+                # while blocked in the OCR thread) and rewraps it as a
+                # generic RuntimeError("Pipeline ... failed").  Unwrap to
+                # surface the real timeout cause so the presenter and TUI
+                # can report it accurately instead of a misleading failure.
+                timeout_exc = _unwrap_timeout_cause()
+                if timeout_exc is not None:
+                    logger.warning(
+                        "Docling pipeline timed out after %.0fs on %s",
+                        time.monotonic() - start_time,
+                        source,
+                    )
+                    # Re-raise the real cause; suppress the docling wrapper's
+                    # context so the reported traceback isn't polluted by the
+                    # generic RuntimeError("Pipeline ... failed").
+                    raise timeout_exc from None
                 duration = time.monotonic() - start_time
                 if tm.doc_ingest_counter:
                     tm.doc_ingest_counter.add(1, {"status": "failure"})

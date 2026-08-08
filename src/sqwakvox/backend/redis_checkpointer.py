@@ -175,9 +175,7 @@ class RedisCheckpointer(BaseCheckpointSaver[str]):
                 if tid not in thread_ids:
                     thread_ids.append(tid)
 
-        config_checkpoint_ns = (
-            config["configurable"].get("checkpoint_ns") if config else None
-        )
+        config_checkpoint_ns = config["configurable"].get("checkpoint_ns") if config else None
         config_checkpoint_id = get_checkpoint_id(config) if config else None
 
         for thread_id in thread_ids:
@@ -197,9 +195,7 @@ class RedisCheckpointer(BaseCheckpointSaver[str]):
                         and checkpoint_id >= before_id
                     ):
                         continue
-                    raw = self._hget(
-                        self._ckpt_key(thread_id, checkpoint_ns), checkpoint_id
-                    )
+                    raw = self._hget(self._ckpt_key(thread_id, checkpoint_ns), checkpoint_id)
                     if raw is None:
                         continue
                     checkpoint, metadata, parent_checkpoint_id = cast(
@@ -221,9 +217,7 @@ class RedisCheckpointer(BaseCheckpointSaver[str]):
                         },
                         checkpoint=checkpoint,
                         metadata=metadata,
-                        pending_writes=self._load_writes(
-                            thread_id, checkpoint_ns, checkpoint_id
-                        ),
+                        pending_writes=self._load_writes(thread_id, checkpoint_ns, checkpoint_id),
                         parent_config=(
                             {
                                 "configurable": {
@@ -315,9 +309,7 @@ class RedisCheckpointer(BaseCheckpointSaver[str]):
         metadata: CheckpointMetadata,
         new_versions: ChannelVersions,
     ) -> RunnableConfig:
-        return await asyncio.to_thread(
-            self.put, config, checkpoint, metadata, new_versions
-        )
+        return await asyncio.to_thread(self.put, config, checkpoint, metadata, new_versions)
 
     async def aput_writes(
         self,
@@ -326,9 +318,7 @@ class RedisCheckpointer(BaseCheckpointSaver[str]):
         task_id: str,
         task_path: str = "",
     ) -> None:
-        return await asyncio.to_thread(
-            self.put_writes, config, writes, task_id, task_path
-        )
+        return await asyncio.to_thread(self.put_writes, config, writes, task_id, task_path)
 
     # ------------------------------------------------------------------ #
     # Internals

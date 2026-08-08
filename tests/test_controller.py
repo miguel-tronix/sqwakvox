@@ -1,6 +1,9 @@
 import json
 from unittest.mock import MagicMock, patch
 
+import pytest
+from billiard.exceptions import SoftTimeLimitExceeded
+
 from sqwakvox.controller import AppController, extract_message
 from sqwakvox.models import StructuredDocument, TableData
 
@@ -235,4 +238,26 @@ def test_app_controller_execute_agent_with_mcp(
         mcp_servers=mcp_servers,
         thread_id=None,
     )
+
+
+def test_convert_document_timeout_unwraps_soft_time_limit() -> None:
+    """When Docling's pipeline hits Celery's soft time limit, the original
+    RuntimeError wrapper must be unwrapped so the caller sees the real
+    SoftTimeLimitExceeded instead of an opaque 'Pipeline failed' message.
+    """
+    controller = AppController()
+    mock_converter = MagicMock()
+    controller.converter = mock_converter
+
+    # Simulate Docling's base_pipeline wrapping SoftTimeLimitExceeded into
+    # a RuntimeError, exactly as seen in run_worker_error.txt.
+    original_exc = SoftTimeLimitExceeded()
+    wrapped_exc = RuntimeError("Pipeline StandardPdfPipeline failed")
+    wrapped_exc.__cause__ = original_exc
+    mock_converter.convert.side_effect = wrapped_exc
+
+    is_cancelled = MagicMock(return_value=False)
+
+    with pytest.raises(SoftTimeLimitExceeded):
+        controller.convert_document("doc.pdf", is_cancelled)
 
