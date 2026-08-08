@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from billiard.exceptions import SoftTimeLimitExceeded # type: ignore[import-untyped]
+from billiard.exceptions import SoftTimeLimitExceeded  # type: ignore[import-untyped]
 from docling.document_converter import DocumentConverter
 
 from sqwakvox.guardrails import (
