@@ -137,9 +137,7 @@ class Presenter:
                 # ``sqwakvox.backend.tasks.*`` names.
                 result = await loop.run_in_executor(
                     None,
-                    lambda: celery_app.send_task(
-                        fn.name, args=args or [], kwargs=kwargs or {}
-                    ),
+                    lambda: celery_app.send_task(fn.name, args=args or [], kwargs=kwargs or {}),
                 )
         except Exception as exc:
             if celery_app.conf.task_always_eager:

@@ -45,9 +45,7 @@ celery_app.conf.update(
     # gracefully; the hard limit (31 min) is the SIGKILL backstop.  Override
     # via env if a particular machine needs even more headroom.
     task_time_limit=int(os.environ.get("SQWAKVOX_CELERY_TASK_TIME_LIMIT", "1860")),
-    task_soft_time_limit=int(
-        os.environ.get("SQWAKVOX_CELERY_TASK_SOFT_TIME_LIMIT", "1800")
-    ),
+    task_soft_time_limit=int(os.environ.get("SQWAKVOX_CELERY_TASK_SOFT_TIME_LIMIT", "1800")),
     worker_prefetch_multiplier=1,
     worker_max_tasks_per_child=20,
 )
