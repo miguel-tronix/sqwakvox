@@ -1,5 +1,5 @@
 ---
-name: python-mutable-values
+name: swe-python-mutable-values
 description: Use when auditing or writing Python code to avoid bugs with mutable default arguments, modifying collections during iteration, reference aliasing, shallow vs deep copies, and dataclass/Pydantic field definitions.
 ---
 

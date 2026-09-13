@@ -372,3 +372,37 @@ async def test_dispatch_parse_waits_for_async_completion(
         assert app.active_document_name == "doc1.pdf"
         assert app.active_error is None
         assert app.loaded_documents["/tmp/late.pdf"].file_name == "doc1.pdf"
+
+
+@pytest.mark.asyncio
+async def test_doc_pager_row_height_and_tab_switching() -> None:
+    """Pager row must only take button height (not half the screen),
+    and view-tabs switching must toggle doc-view-container."""
+    app = SqwakvoxApp()
+    async with app.run_test(size=(120, 40)) as pilot:
+        container = app.query_one("#doc-view-container")
+        render_pane = app.query_one("#render-pane")
+        pager_row = app.query_one("#doc-pager-row")
+        btn = app.query_one("#btn-load-more")
+        agent_pane = app.query_one("#agent-response-pane")
+
+        # Pager row must only take the height of the button (3 cells),
+        # leaving the bulk of the container for the render pane.
+        assert pager_row.region.height == btn.region.height
+        assert pager_row.region.height < container.region.height // 2
+        assert render_pane.region.height > container.region.height // 2
+
+        # View tabs switching toggles doc-view-container and agent-response-pane
+        view_tabs = app.query_one("#view-tabs", Tabs)
+        view_tabs.active = "view-agent"
+        await pilot.pause()
+
+        assert container.styles.display == "none"
+        assert agent_pane.styles.display == "block"
+
+        view_tabs.active = "view-doc"
+        await pilot.pause()
+
+        assert container.styles.display == "block"
+        assert agent_pane.styles.display == "none"
+

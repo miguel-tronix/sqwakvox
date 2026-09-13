@@ -173,55 +173,73 @@ def calculator(expression: str) -> str:
     return _trace_tool("calculator", _run)
 
 
+def _with_numbers(numbers: str, func: Callable[[np.ndarray], str]) -> str:
+    """Parse a number list and run *func* on the resulting 1D float array.
+
+    Consolidates parsing, validation, and error handling across statistical tools
+    (eliminating duplicate-code smell).
+    """
+    try:
+        values = _parse_number_list(numbers)
+    except ValueError as exc:
+        return f"Error: {exc}"
+    if not values:
+        return "Error: no numbers provided"
+    return func(np.asarray(values, dtype=float))
+
+
 @mcp.tool(
     name="stats_summary",
     description=(
         "Compute a comprehensive statistical summary for a list of numbers. "
-        "Returns count, sum, mean, median, min, max, range, variance (population), "
-        "standard deviation (population), and mode(s)."
+        "Returns count, sum, mean, median, min, max, range, variance, "
+        "standard deviation, mode(s), and quartiles (Q1, Q2, Q3, IQR). "
+        "Optional ddof parameter (default 0 for population)."
     ),
 )
-def stats_summary(numbers: str) -> str:
+def stats_summary(numbers: str, ddof: int = 0) -> str:
     """Compute full stats for a comma/space-separated list of numbers."""
 
     def _run() -> str:
-        try:
-            values = _parse_number_list(numbers)
-        except ValueError as exc:
-            return f"Error: {exc}"
+        def _calc(arr: np.ndarray) -> str:
+            n = len(arr)
+            total = float(np.sum(arr))
+            mean = float(np.mean(arr))
+            median = float(np.median(arr))
 
-        n = len(values)
-        if n == 0:
-            return "Error: no numbers provided"
+            counts = Counter(arr)
+            max_count = max(counts.values())
+            modes = sorted(k for k, v in counts.items() if v == max_count)
+            mode_str = ", ".join(f"{m:.10g}" for m in modes) if len(modes) < n else "none"
 
-        arr = np.asarray(values, dtype=float)
+            variance = float(np.var(arr, ddof=ddof))
+            std_dev = float(np.std(arr, ddof=ddof))
+            vmin = float(np.min(arr))
+            vmax = float(np.max(arr))
 
-        total = float(np.sum(arr))
-        mean = float(np.mean(arr))
-        median = float(np.median(arr))
+            q1 = float(np.percentile(arr, 25, method="linear"))
+            q2 = float(np.percentile(arr, 50, method="linear"))
+            q3 = float(np.percentile(arr, 75, method="linear"))
+            iqr = q3 - q1
 
-        counts = Counter(values)
-        max_count = max(counts.values())
-        modes = sorted(k for k, v in counts.items() if v == max_count)
-        mode_str = ", ".join(f"{m:.10g}" for m in modes) if len(modes) < len(values) else "none"
+            return (
+                f"Count: {n}\n"
+                f"Sum: {total:.10g}\n"
+                f"Mean: {mean:.10g}\n"
+                f"Median: {median:.10g}\n"
+                f"Min: {vmin:.10g}\n"
+                f"Max: {vmax:.10g}\n"
+                f"Range: {vmax - vmin:.10g}\n"
+                f"Variance (ddof={ddof}): {variance:.10g}\n"
+                f"Std Dev (ddof={ddof}): {std_dev:.10g}\n"
+                f"Mode(s): {mode_str}\n"
+                f"Q1: {q1:.10g}\n"
+                f"Q2: {q2:.10g}\n"
+                f"Q3: {q3:.10g}\n"
+                f"IQR: {iqr:.10g}"
+            )
 
-        variance = float(np.var(arr))
-        std_dev = float(np.std(arr))
-        vmin = float(np.min(arr))
-        vmax = float(np.max(arr))
-
-        return (
-            f"Count: {n}\n"
-            f"Sum: {total:.10g}\n"
-            f"Mean: {mean:.10g}\n"
-            f"Median: {median:.10g}\n"
-            f"Min: {vmin:.10g}\n"
-            f"Max: {vmax:.10g}\n"
-            f"Range: {vmax - vmin:.10g}\n"
-            f"Variance (population): {variance:.10g}\n"
-            f"Std Dev (population): {std_dev:.10g}\n"
-            f"Mode(s): {mode_str}"
-        )
+        return _with_numbers(numbers, _calc)
 
     return _trace_tool("stats_summary", _run)
 
@@ -232,13 +250,7 @@ def stats_summary(numbers: str) -> str:
 )
 def stats_mean(numbers: str) -> str:
     def _run() -> str:
-        try:
-            values = _parse_number_list(numbers)
-        except ValueError as exc:
-            return f"Error: {exc}"
-        if not values:
-            return "Error: no numbers provided"
-        return f"{np.mean(np.asarray(values, dtype=float)):.10g}"
+        return _with_numbers(numbers, lambda arr: f"{np.mean(arr):.10g}")
 
     return _trace_tool("stats_mean", _run)
 
@@ -249,47 +261,35 @@ def stats_mean(numbers: str) -> str:
 )
 def stats_median(numbers: str) -> str:
     def _run() -> str:
-        try:
-            values = _parse_number_list(numbers)
-        except ValueError as exc:
-            return f"Error: {exc}"
-        if not values:
-            return "Error: no numbers provided"
-        return f"{np.median(np.asarray(values, dtype=float)):.10g}"
+        return _with_numbers(numbers, lambda arr: f"{np.median(arr):.10g}")
 
     return _trace_tool("stats_median", _run)
 
 
 @mcp.tool(
     name="stats_stddev",
-    description="Calculate the population standard deviation of a list of numbers.",
+    description=(
+        "Calculate the standard deviation of a list of numbers. "
+        "Default is population std (ddof=0). Pass ddof=1 for sample std."
+    ),
 )
-def stats_stddev(numbers: str) -> str:
+def stats_stddev(numbers: str, ddof: int = 0) -> str:
     def _run() -> str:
-        try:
-            values = _parse_number_list(numbers)
-        except ValueError as exc:
-            return f"Error: {exc}"
-        if not values:
-            return "Error: no numbers provided"
-        return f"{np.std(np.asarray(values, dtype=float)):.10g}"
+        return _with_numbers(numbers, lambda arr: f"{np.std(arr, ddof=ddof):.10g}")
 
     return _trace_tool("stats_stddev", _run)
 
 
 @mcp.tool(
     name="stats_variance",
-    description="Calculate the population variance of a list of numbers.",
+    description=(
+        "Calculate the variance of a list of numbers. "
+        "Default is population variance (ddof=0). Pass ddof=1 for sample variance."
+    ),
 )
-def stats_variance(numbers: str) -> str:
+def stats_variance(numbers: str, ddof: int = 0) -> str:
     def _run() -> str:
-        try:
-            values = _parse_number_list(numbers)
-        except ValueError as exc:
-            return f"Error: {exc}"
-        if not values:
-            return "Error: no numbers provided"
-        return f"{np.var(np.asarray(values, dtype=float)):.10g}"
+        return _with_numbers(numbers, lambda arr: f"{np.var(arr, ddof=ddof):.10g}")
 
     return _trace_tool("stats_variance", _run)
 
@@ -300,16 +300,53 @@ def stats_variance(numbers: str) -> str:
 )
 def stats_minmax(numbers: str) -> str:
     def _run() -> str:
-        try:
-            values = _parse_number_list(numbers)
-        except ValueError as exc:
-            return f"Error: {exc}"
-        if not values:
-            return "Error: no numbers provided"
-        arr = np.asarray(values, dtype=float)
-        return f"Min: {np.min(arr):.10g}, Max: {np.max(arr):.10g}"
+        return _with_numbers(
+            numbers,
+            lambda arr: f"Min: {np.min(arr):.10g}, Max: {np.max(arr):.10g}",
+        )
 
     return _trace_tool("stats_minmax", _run)
+
+
+@mcp.tool(
+    name="stats_percentile",
+    description=(
+        "Calculate the q-th percentile of a list of numbers. "
+        "Parameter q is a float between 0 and 100."
+    ),
+)
+def stats_percentile(numbers: str, q: float = 50) -> str:
+    def _run() -> str:
+        if not (0 <= q <= 100):
+            return "Error: q must be between 0 and 100"
+        return _with_numbers(numbers, lambda arr: f"Percentile({q}): {np.percentile(arr, q):.10g}")
+
+    return _trace_tool("stats_percentile", _run)
+
+
+@mcp.tool(
+    name="stats_quartiles",
+    description=(
+        "Compute Q1, Q2 (median), Q3, and the Interquartile Range (IQR) for a list of numbers."
+    ),
+)
+def stats_quartiles(numbers: str) -> str:
+    def _run() -> str:
+        def _calc(arr: np.ndarray) -> str:
+            q1 = float(np.percentile(arr, 25))
+            q2 = float(np.percentile(arr, 50))
+            q3 = float(np.percentile(arr, 75))
+            iqr = q3 - q1
+            return (
+                f"Q1 (25th): {q1:.10g}\n"
+                f"Q2 (50th): {q2:.10g}\n"
+                f"Q3 (75th): {q3:.10g}\n"
+                f"IQR: {iqr:.10g}"
+            )
+
+        return _with_numbers(numbers, _calc)
+
+    return _trace_tool("stats_quartiles", _run)
 
 
 @mcp.tool(
@@ -318,10 +355,11 @@ def stats_minmax(numbers: str) -> str:
         "Compute statistics for a 2D numeric matrix given as rows separated by "
         "newlines and columns by commas/spaces. Aggregates across axis=0 "
         "(per-column, down each row) or axis=1 (per-row, across each column). "
-        "Returns mean, median, min, max, std, var for the chosen axis."
+        "Returns mean, median, min, max, std, var for the chosen axis. "
+        "Optional ddof parameter (default 0 for population)."
     ),
 )
-def stats_2d(matrix: str, axis: int = 0) -> str:
+def stats_2d(matrix: str, axis: int = 0, ddof: int = 0) -> str:
     """Compute per-column or per-row statistics for a 2D numeric matrix."""
 
     def _run() -> str:
@@ -340,11 +378,11 @@ def stats_2d(matrix: str, axis: int = 0) -> str:
         median = np.median(arr, axis=axis)
         vmin = np.min(arr, axis=axis)
         vmax = np.max(arr, axis=axis)
-        std = np.std(arr, axis=axis)
-        var = np.var(arr, axis=axis)
+        std = np.std(arr, axis=axis, ddof=ddof)
+        var = np.var(arr, axis=axis, ddof=ddof)
 
         label = "Column" if axis == 0 else "Row"
-        lines = [f"{label}-wise statistics (axis={axis}):"]
+        lines = [f"{label}-wise statistics (axis={axis}, ddof={ddof}):"]
         for i in range(mean.shape[0]):
             lines.append(
                 f"{label} {i}: "
