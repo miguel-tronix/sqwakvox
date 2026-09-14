@@ -1,5 +1,5 @@
 ---
-name: numpy-standard-stats
+name: swe-numpy-standard-stats
 description: Use when computing, optimizing, or reviewing summary statistics (mean, median, std, var, min/max, percentiles, IQR) on numerical arrays with NumPy, managing multi-dimensional axes, handling NaN/missing values, or resolving ddof discrepancies.
 ---
 

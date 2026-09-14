@@ -1,5 +1,5 @@
 ---
-name: duplicate-code-smell
+name: swe-duplicate-code-smell
 description: Use when reviewing, refactoring, or auditing code to detect, evaluate, and eliminate duplicate code (DRY violations), while balancing abstraction overhead and avoiding premature deduplication.
 ---
 
