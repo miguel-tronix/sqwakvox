@@ -114,6 +114,10 @@ Screen {
     border-bottom: solid $secondary;
 }
 
+#doc-view-container {
+    height: 1fr;
+}
+
 #render-pane {
     border: solid $secondary;
     padding: 1;
@@ -124,6 +128,17 @@ Screen {
 
 #render-pane:focus {
     border: double $secondary;
+}
+
+#doc-pager-row {
+    height: auto;
+    align: center middle;
+}
+
+#page-indicator {
+    height: 3;
+    content-align: left middle;
+    margin-left: 1;
 }
 
 #view-tabs {
@@ -1572,13 +1587,13 @@ class SqwakvoxApp(App[None]):
             return
 
         if event.tabs.id == "view-tabs":
-            render_pane = self.query_one("#render-pane")
+            doc_container = self.query_one("#doc-view-container")
             agent_pane = self.query_one("#agent-response-pane")
             if event.tab.id == "view-doc":
-                render_pane.styles.display = "block"
+                doc_container.styles.display = "block"
                 agent_pane.styles.display = "none"
             elif event.tab.id == "view-agent":
-                render_pane.styles.display = "none"
+                doc_container.styles.display = "none"
                 agent_pane.styles.display = "block"
                 agent_pane.focus()
             return
