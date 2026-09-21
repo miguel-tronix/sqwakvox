@@ -338,10 +338,7 @@ def stats_quartiles(numbers: str) -> str:
             q3 = float(np.percentile(arr, 75))
             iqr = q3 - q1
             return (
-                f"Q1 (25th): {q1:.10g}\n"
-                f"Q2 (50th): {q2:.10g}\n"
-                f"Q3 (75th): {q3:.10g}\n"
-                f"IQR: {iqr:.10g}"
+                f"Q1 (25th): {q1:.10g}\nQ2 (50th): {q2:.10g}\nQ3 (75th): {q3:.10g}\nIQR: {iqr:.10g}"
             )
 
         return _with_numbers(numbers, _calc)
