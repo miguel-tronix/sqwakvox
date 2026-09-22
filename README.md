@@ -157,6 +157,32 @@ as `.agents/skills/`. Stored skills appear in the sidebar's **Skills** pane
 and are reusable by any tooling that reads that format. Override the root
 with `SQWAKVOX_SKILLS_DIR`.
 
+#### External Agent Integration (MCP Gateway)
+
+You can connect external AI agents (like `hermes-agent`, Claude Code, Cursor, or Antigravity) to Sqwakvox. External agents use the MCP gateway to inspect open documents, ask questions, and search SWE book chunks.
+
+Start the gateway:
+
+```bash
+uv run python -m sqwakvox.mcp_gateway
+```
+
+Example configuration for Hermes (`~/.hermes/config.yaml`):
+
+```yaml
+mcp_servers:
+  sqwakvox:
+    command: /home/migtronix/app2/sqwakvox/.venv/bin/python
+    args:
+      - -m
+      - sqwakvox.mcp_gateway
+    env:
+      SQWAKVOX_CELERY_BROKER: redis://localhost:6379/0
+      PYTHONPATH: /home/migtronix/app2/sqwakvox/src
+    enabled: true
+    timeout: 180
+```
+
 ### Keybindings
 
 | Key | Action |
