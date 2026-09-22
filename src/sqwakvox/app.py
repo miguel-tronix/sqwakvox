@@ -367,7 +367,11 @@ class SqwakvoxApp(App[None]):
         return str(value) if value else "financial"
 
     def on_unmount(self) -> None:
-        """Stop all managed worker subprocesses when the TUI shuts down."""
+        """Stop managed workers and clear session registry when TUI shuts down."""
+        with contextlib.suppress(Exception):
+            from sqwakvox import session_registry
+
+            session_registry.clear_session()
         self.worker_manager.stop_all()
 
     def compose(self) -> ComposeResult:
@@ -1360,6 +1364,20 @@ class SqwakvoxApp(App[None]):
             if loaded is not None:
                 loaded.structured.metadata.update(extras)
 
+        with contextlib.suppress(Exception):
+            from sqwakvox import session_registry
+
+            session_registry.publish_active_document(
+                doc_name=doc.file_name,
+                source=self._active_source() or "",
+                domain_id=domain_id,
+                queue=self._active_queue(),
+                doc_context=self.doc_context,
+                data_store=data_store,
+                table_count=len(doc.tables),
+                model_id=model_id,
+            )
+
         # --- Step 2: serialise the active domain's MCP server configs ---
         # any_agent MCP configs are Pydantic models; model_dump() yields a
         # broker-safe dict that the worker rehydrates into MCPParams.
@@ -1532,6 +1550,26 @@ class SqwakvoxApp(App[None]):
 
         # Refresh the skills list for the active domain
         self._refresh_skills_list(domain_id)
+
+        # Publish active document state to Redis session registry for external agents (MCP)
+        with contextlib.suppress(Exception):
+            from sqwakvox import session_registry
+
+            model_val = "openai:gpt-5.5-high"
+            with contextlib.suppress(Exception):
+                val = self.query_one("#model-selector", Select).value
+                if val:
+                    model_val = str(val)
+            session_registry.publish_active_document(
+                doc_name=doc.file_name,
+                source=doc_source,
+                domain_id=domain_id,
+                queue=self._active_queue(),
+                doc_context=self.doc_context,
+                data_store={},
+                table_count=len(doc.tables),
+                model_id=model_val,
+            )
 
         # Sync selection across UI elements
         if doc_source:
