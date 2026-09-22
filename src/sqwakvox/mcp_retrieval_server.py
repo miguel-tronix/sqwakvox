@@ -17,6 +17,7 @@ import time
 from fastmcp import FastMCP
 
 from sqwakvox.domains.swe import retrieval
+from sqwakvox.mcp_http import run_with_http_guard
 
 logger = logging.getLogger(__name__)
 
@@ -33,10 +34,10 @@ def _trace_tool(tool_name: str, fn: object) -> str:
         try:
             result = fn()  # type: ignore[operator]
         except Exception as exc:  # tools must not crash the server
-            logger.error("Retrieval tool %s failed: %s", tool_name, exc)
+            logger.error("Retrieval tool %s failed: %s", tool_name, exc, exc_info=True)
             if tm.mcp_tool_counter:
                 tm.mcp_tool_counter.add(1, {"tool": tool_name, "status": "failure"})
-            return f"Error: {exc}"
+            return f"Error: tool '{tool_name}' failed. Check server logs for details."
     if tm.mcp_tool_counter:
         tm.mcp_tool_counter.add(1, {"tool": tool_name, "status": "success"})
     if tm.mcp_tool_duration:
@@ -44,21 +45,32 @@ def _trace_tool(tool_name: str, fn: object) -> str:
     return result  # type: ignore[no-any-return]
 
 
+def _clamp_int(value: int, lo: int, hi: int) -> int:
+    return max(lo, min(hi, value))
+
+
+_QUERY_MAX_CHARS = 8_000
+_K_MIN, _K_MAX = 1, 50
+
+
 @mcp.tool(
     name="search_document",
     description=(
         "Search the sections of a loaded SWE document. Args: document_id (the "
         "file name shown in the document context, e.g. 'Refactoring.epub'), "
-        "query (free text), k (max results, default 5). Returns matching "
-        "chunks of the document. Use this for large documents whose full "
-        "content is not in the context."
+        "query (free text), k (max results, default 5, clamped 1-50). Returns "
+        "matching chunks of the document. Use this for large documents whose "
+        "full content is not in the context."
     ),
+    annotations={"readOnlyHint": True},
 )
 def search_document(document_id: str, query: str, k: int = 5) -> str:
     """Return top-k matching chunks of *document_id* for *query*."""
 
     def _run() -> str:
-        results = retrieval.search_document(document_id, query, k=k)
+        safe_query = query[:_QUERY_MAX_CHARS]
+        safe_k = _clamp_int(k, _K_MIN, _K_MAX)
+        results = retrieval.search_document(document_id, safe_query, k=safe_k)
         return json.dumps(results, indent=2)
 
     return _trace_tool("search_document", _run)
@@ -70,6 +82,7 @@ def search_document(document_id: str, query: str, k: int = 5) -> str:
         "Report how many chunks of a document are indexed (0 = not indexed / "
         "not found). Args: document_id."
     ),
+    annotations={"readOnlyHint": True},
 )
 def index_info(document_id: str) -> str:
     """Return the chunk count for *document_id*."""
@@ -84,6 +97,7 @@ def index_info(document_id: str) -> str:
 @mcp.tool(
     name="list_indexed_documents",
     description="List every indexed document with its chunk count.",
+    annotations={"readOnlyHint": True},
 )
 def list_indexed_documents() -> str:
     """Return the list of indexed documents."""
@@ -103,7 +117,7 @@ def list_indexed_documents() -> str:
 
 
 def main() -> None:
-    """Run the retrieval MCP server (default: stdio transport)."""
+    """Run the retrieval MCP server (default: stdio; HTTP needs opt-in)."""
     import argparse
 
     parser = argparse.ArgumentParser(description="Sqwakvox retrieval MCP server")
@@ -117,12 +131,7 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8000, help="Port for sse/http transport")
     args = parser.parse_args()
 
-    if args.transport == "stdio":
-        mcp.run(transport="stdio")
-    elif args.transport == "sse":
-        mcp.run(transport="sse", host=args.host, port=args.port)
-    else:
-        mcp.run(transport="streamable-http", host=args.host, port=args.port)
+    run_with_http_guard(mcp, args, server_name="retrieval")
 
 
 if __name__ == "__main__":

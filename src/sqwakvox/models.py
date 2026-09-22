@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from typing import Any, ClassVar
 
 from pydantic import BaseModel
@@ -64,3 +65,27 @@ class ModelProvider:
     @classmethod
     def supports_system_role(cls, model_id: str) -> bool:
         return bool(cls.MAP.get(model_id, {}).get("supports_system_role", True))
+
+    @classmethod
+    def resolve_key(cls, model_id: str) -> tuple[str, str]:
+        """Resolve *model_id* and its API key from the environment.
+
+        Falls back through the common provider env vars if the model's own
+        env var is empty, remapping ``model_id`` to match whichever key is
+        found (same behaviour the gateway used before keys stopped crossing
+        the broker).
+        """
+        env_var = cls.get_env_var(model_id)
+        api_key = os.environ.get(env_var, "").strip()
+        if api_key:
+            return model_id, api_key
+
+        for alt_var, alt_model in (
+            ("OPENAI_API_KEY", "openai:gpt-5.5-high"),
+            ("ANTHROPIC_API_KEY", "anthropic:claude-4.6"),
+            ("GEMINI_API_KEY", "gemini:gemini-3.5-flash"),
+        ):
+            val = os.environ.get(alt_var, "").strip()
+            if val:
+                return alt_model, val
+        return model_id, ""

@@ -40,3 +40,11 @@ The old approach used `AnyAgentLib.create()` (sync) which calls `run_async_in_sy
 - Logs a warning if the agent takes > 80% of the timeout.
 
 These prevent the model from looping indefinitely when tools fail.
+
+### Priority 6: MCP Gateway & Sibling Server Hardening
+
+- **Broker Credential Security**: API keys no longer cross the Celery broker. The gateway dispatches Celery tasks with `api_key=None`; workers resolve the key from their local environment via `ModelProvider.resolve_key()`.
+- **HTTP Transport Guard**: Sibling MCP servers (`calc`, `skills`, `retrieval`) refuse network-binding transports (`--transport sse` / `--transport http`) unless explicitly opted in with `SQWAKVOX_MCP_ALLOW_HTTP=1` and a non-empty bearer token in `SQWAKVOX_MCP_HTTP_TOKEN`. The gateway itself is locked to `stdio` only.
+- **Read-Only Mode & Tool Annotations**: Setting `SQWAKVOX_MCP_READ_ONLY=1` disables mutating tools (`create_skill`, `update_skill`, `delete_skill`) in the skills server. Tools declare `readOnlyHint`, `destructiveHint`, and `idempotentHint` annotations.
+- **Input Clamping & Rate Limiting**: `query` length clamped to 8,000 chars, `k` clamped to 1–50, `timeout` clamped to 5–600s. Sliding-window rate limit on `sqwakvox_query` via `SQWAKVOX_MCP_QUERY_RPM` (default 60).
+- **FastMCP 4 Deferral**: Upgrading to FastMCP 4 (`mcp>=2.0.0`) is deferred because `any-agent[langchain]` depends on `langchain-mcp-adapters` which pins `mcp<2.0.0`. FastMCP is pinned to `fastmcp>=3.4.7` and `mcp>=1.29.0,<2.0`.
