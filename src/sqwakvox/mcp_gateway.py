@@ -175,9 +175,7 @@ def sqwakvox_query(
 
         if not api_key:
             env_var = ModelProvider.get_env_var(model_id)
-            return (
-                f"Error: API key for model '{model_id}' ({env_var}) is not set in environment."
-            )
+            return f"Error: API key for model '{model_id}' ({env_var}) is not set in environment."
 
         # Dispatch Celery task to the tab's worker queue
         async_result = celery_app.send_task(
