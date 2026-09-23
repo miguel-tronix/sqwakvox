@@ -183,6 +183,14 @@ mcp_servers:
     timeout: 180
 ```
 
+##### Gateway & Sibling MCP Security Settings
+
+- **Stdio transport**: The gateway runs over stdio only (`uv run python -m sqwakvox.mcp_gateway`).
+- **Worker-side API keys**: API keys do not cross the Celery broker; worker processes resolve their own provider keys from the worker environment.
+- `SQWAKVOX_MCP_QUERY_RPM`: In-process rate limit for `sqwakvox_query` (default: 60 RPM).
+- `SQWAKVOX_MCP_ALLOW_HTTP=1` & `SQWAKVOX_MCP_HTTP_TOKEN=<token>`: Required if running sibling servers (`calc`, `skills`, `retrieval`) over SSE or HTTP transport.
+- `SQWAKVOX_MCP_READ_ONLY=1`: Enforces read-only mode on the skills server (blocks `create_skill`, `update_skill`, `delete_skill`).
+
 ### Keybindings
 
 | Key | Action |

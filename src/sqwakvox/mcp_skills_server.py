@@ -15,11 +15,13 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 
 from fastmcp import FastMCP
 
 from sqwakvox.domains.swe import skills as skills_store
+from sqwakvox.mcp_http import run_with_http_guard
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +29,22 @@ mcp = FastMCP("sqwakvox-skills")
 
 #: Domains whose skills this server manages.
 DEFAULT_DOMAIN = "swe"
+
+
+def _is_read_only() -> bool:
+    """True when ``SQWAKVOX_MCP_READ_ONLY`` is set to a truthy value."""
+    return os.environ.get("SQWAKVOX_MCP_READ_ONLY", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def _read_only_blocked(action: str) -> str | None:
+    if _is_read_only():
+        return f"Error: read-only mode is enabled (SQWAKVOX_MCP_READ_ONLY); cannot {action}."
+    return None
 
 
 def _trace_tool(tool_name: str, fn: object) -> str:
@@ -39,10 +57,10 @@ def _trace_tool(tool_name: str, fn: object) -> str:
         try:
             result = fn()  # type: ignore[operator]
         except Exception as exc:
-            logger.error("Skills tool %s failed: %s", tool_name, exc)
+            logger.error("Skills tool %s failed: %s", tool_name, exc, exc_info=True)
             if tm.mcp_tool_counter:
                 tm.mcp_tool_counter.add(1, {"tool": tool_name, "status": "failure"})
-            return f"Error: {exc}"
+            return f"Error: tool '{tool_name}' failed. Check server logs for details."
     if tm.mcp_tool_counter:
         tm.mcp_tool_counter.add(1, {"tool": tool_name, "status": "success"})
     if tm.mcp_tool_duration:
@@ -56,6 +74,7 @@ def _trace_tool(tool_name: str, fn: object) -> str:
         "List the available skills (name + description) stored for the SWE "
         "domain. Use this to see what reusable knowledge already exists."
     ),
+    annotations={"readOnlyHint": True},
 )
 def list_skills() -> str:
     """Return all stored skills as JSON."""
@@ -71,6 +90,7 @@ def list_skills() -> str:
     description=(
         "Read the full content of a skill by name. Use before following or editing a skill."
     ),
+    annotations={"readOnlyHint": True},
 )
 def read_skill(name: str) -> str:
     """Return the SKILL.md body for *name*."""
@@ -92,11 +112,15 @@ def read_skill(name: str) -> str:
         "body in Markdown — concise, imperative, one concern per skill). "
         "Persists to ./skills/swe/<name>/SKILL.md."
     ),
+    annotations={"readOnlyHint": False, "destructiveHint": False},
 )
 def create_skill(name: str, description: str, content: str) -> str:
     """Persist a new skill file."""
 
     def _run() -> str:
+        blocked = _read_only_blocked("create skill")
+        if blocked:
+            return blocked
         path = skills_store.create_skill(name, description, content, DEFAULT_DOMAIN)
         return f"Created skill '{name}' at {path}"
 
@@ -109,11 +133,15 @@ def create_skill(name: str, description: str, content: str) -> str:
         "Update an existing skill's content/description. Args: name, "
         "description, content — same validation as create_skill."
     ),
+    annotations={"readOnlyHint": False, "destructiveHint": True},
 )
 def update_skill(name: str, description: str, content: str) -> str:
     """Overwrite an existing skill file."""
 
     def _run() -> str:
+        blocked = _read_only_blocked("update skill")
+        if blocked:
+            return blocked
         path = skills_store.update_skill(name, description, content, DEFAULT_DOMAIN)
         return f"Updated skill '{name}' at {path}"
 
@@ -123,11 +151,15 @@ def update_skill(name: str, description: str, content: str) -> str:
 @mcp.tool(
     name="delete_skill",
     description="Delete a skill by name from the writable skills directory.",
+    annotations={"readOnlyHint": False, "destructiveHint": True},
 )
 def delete_skill(name: str) -> str:
     """Remove a skill file."""
 
     def _run() -> str:
+        blocked = _read_only_blocked("delete skill")
+        if blocked:
+            return blocked
         deleted = skills_store.delete_skill(name, DEFAULT_DOMAIN)
         return f"Deleted skill '{name}'" if deleted else f"Error: skill '{name}' not found"
 
@@ -140,6 +172,7 @@ def delete_skill(name: str) -> str:
         "Search skills by a case-insensitive match on name or description. "
         "Returns matching skills as JSON."
     ),
+    annotations={"readOnlyHint": True},
 )
 def search_skills(query: str) -> str:
     """Return skills matching *query*."""
@@ -156,7 +189,7 @@ def search_skills(query: str) -> str:
 
 
 def main() -> None:
-    """Run the skills MCP server (default: stdio transport)."""
+    """Run the skills MCP server (default: stdio; HTTP needs opt-in)."""
     import argparse
 
     parser = argparse.ArgumentParser(description="Sqwakvox skills MCP server")
@@ -170,12 +203,7 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8000, help="Port for sse/http transport")
     args = parser.parse_args()
 
-    if args.transport == "stdio":
-        mcp.run(transport="stdio")
-    elif args.transport == "sse":
-        mcp.run(transport="sse", host=args.host, port=args.port)
-    else:
-        mcp.run(transport="streamable-http", host=args.host, port=args.port)
+    run_with_http_guard(mcp, args, server_name="skills")
 
 
 if __name__ == "__main__":
