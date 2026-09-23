@@ -46,3 +46,17 @@ def test_search_skill(_env: None) -> None:
 def test_invalid_skill_reports_error(_env: None) -> None:
     result = skills_mcp.create_skill("Bad Name", "d", "body")
     assert result.startswith("Error:")
+
+
+def test_read_only_mode_blocks_mutations(
+    _env: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("SQWAKVOX_MCP_READ_ONLY", "1")
+    created = skills_mcp.create_skill("ro-skill", "desc", "body")
+    assert created.startswith("Error: read-only")
+    assert skills_mcp.update_skill("ro-skill", "d", "c").startswith("Error: read-only")
+    assert skills_mcp.delete_skill("ro-skill").startswith("Error: read-only")
+    # reads still allowed
+    assert isinstance(skills_mcp.list_skills(), str)
+    assert isinstance(skills_mcp.search_skills("anything"), str)
+    assert isinstance(skills_mcp.read_skill("ro-skill"), str)

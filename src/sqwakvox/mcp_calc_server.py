@@ -10,6 +10,7 @@ Launch with:
 from __future__ import annotations
 
 import ast
+import logging
 import math
 import operator as op
 import time
@@ -20,7 +21,10 @@ from typing import Any
 import numpy as np
 from fastmcp import FastMCP
 
+from sqwakvox.mcp_http import run_with_http_guard
 from sqwakvox.telemetry import get_telemetry, trace_span
+
+logger = logging.getLogger(__name__)
 
 mcp = FastMCP("sqwakvox-calc-stats")
 
@@ -137,11 +141,14 @@ def _trace_tool(tool_name: str, fn: Callable[[], str]) -> str:
             return result
         except Exception:
             elapsed = time.monotonic() - start
+            logger.error("Calc tool %s failed", tool_name, exc_info=True)
             if tm.mcp_tool_counter:
                 tm.mcp_tool_counter.add(1, {"tool": tool_name, "status": "exception"})
             if tm.mcp_tool_duration:
                 tm.mcp_tool_duration.record(elapsed, {"tool": tool_name})
-            raise
+            # Return a generic message instead of re-raising so internals
+            # (paths, env) never leak over the MCP transport.
+            return f"Error: tool '{tool_name}' failed. Check server logs for details."
 
 
 # ---------------------------------------------------------------------------
@@ -157,6 +164,7 @@ def _trace_tool(tool_name: str, fn: Callable[[], str]) -> str:
         "sin, cos, tan, asin, acos, atan, ceil, floor, abs, round, min, max, "
         "sum, pow. Constants: pi, e. Example: 'sqrt(16) + 2 * 3' returns 10.0"
     ),
+    annotations={"readOnlyHint": True, "idempotentHint": True},
 )
 def calculator(expression: str) -> str:
     """Evaluate a mathematical expression safely."""
@@ -196,6 +204,7 @@ def _with_numbers(numbers: str, func: Callable[[np.ndarray], str]) -> str:
         "standard deviation, mode(s), and quartiles (Q1, Q2, Q3, IQR). "
         "Optional ddof parameter (default 0 for population)."
     ),
+    annotations={"readOnlyHint": True, "idempotentHint": True},
 )
 def stats_summary(numbers: str, ddof: int = 0) -> str:
     """Compute full stats for a comma/space-separated list of numbers."""
@@ -247,6 +256,7 @@ def stats_summary(numbers: str, ddof: int = 0) -> str:
 @mcp.tool(
     name="stats_mean",
     description="Calculate the arithmetic mean (average) of a list of numbers.",
+    annotations={"readOnlyHint": True, "idempotentHint": True},
 )
 def stats_mean(numbers: str) -> str:
     def _run() -> str:
@@ -258,6 +268,7 @@ def stats_mean(numbers: str) -> str:
 @mcp.tool(
     name="stats_median",
     description="Calculate the median of a list of numbers.",
+    annotations={"readOnlyHint": True, "idempotentHint": True},
 )
 def stats_median(numbers: str) -> str:
     def _run() -> str:
@@ -272,6 +283,7 @@ def stats_median(numbers: str) -> str:
         "Calculate the standard deviation of a list of numbers. "
         "Default is population std (ddof=0). Pass ddof=1 for sample std."
     ),
+    annotations={"readOnlyHint": True, "idempotentHint": True},
 )
 def stats_stddev(numbers: str, ddof: int = 0) -> str:
     def _run() -> str:
@@ -286,6 +298,7 @@ def stats_stddev(numbers: str, ddof: int = 0) -> str:
         "Calculate the variance of a list of numbers. "
         "Default is population variance (ddof=0). Pass ddof=1 for sample variance."
     ),
+    annotations={"readOnlyHint": True, "idempotentHint": True},
 )
 def stats_variance(numbers: str, ddof: int = 0) -> str:
     def _run() -> str:
@@ -297,6 +310,7 @@ def stats_variance(numbers: str, ddof: int = 0) -> str:
 @mcp.tool(
     name="stats_minmax",
     description="Return the minimum and maximum values from a list of numbers.",
+    annotations={"readOnlyHint": True, "idempotentHint": True},
 )
 def stats_minmax(numbers: str) -> str:
     def _run() -> str:
@@ -311,9 +325,10 @@ def stats_minmax(numbers: str) -> str:
 @mcp.tool(
     name="stats_percentile",
     description=(
-        "Calculate the q-th percentile of a list of numbers. "
+        "Calculate the q-th percentile for a list of numbers. "
         "Parameter q is a float between 0 and 100."
     ),
+    annotations={"readOnlyHint": True, "idempotentHint": True},
 )
 def stats_percentile(numbers: str, q: float = 50) -> str:
     def _run() -> str:
@@ -329,6 +344,7 @@ def stats_percentile(numbers: str, q: float = 50) -> str:
     description=(
         "Compute Q1, Q2 (median), Q3, and the Interquartile Range (IQR) for a list of numbers."
     ),
+    annotations={"readOnlyHint": True, "idempotentHint": True},
 )
 def stats_quartiles(numbers: str) -> str:
     def _run() -> str:
@@ -355,6 +371,7 @@ def stats_quartiles(numbers: str) -> str:
         "Returns mean, median, min, max, std, var for the chosen axis. "
         "Optional ddof parameter (default 0 for population)."
     ),
+    annotations={"readOnlyHint": True, "idempotentHint": True},
 )
 def stats_2d(matrix: str, axis: int = 0, ddof: int = 0) -> str:
     """Compute per-column or per-row statistics for a 2D numeric matrix."""
@@ -408,6 +425,7 @@ def stats_2d(matrix: str, axis: int = 0, ddof: int = 0) -> str:
         "years, compounds_per_year (default 12 for monthly). "
         "Returns the future value after compounding."
     ),
+    annotations={"readOnlyHint": True, "idempotentHint": True},
 )
 def compound_interest(
     principal: float,
@@ -432,6 +450,7 @@ def compound_interest(
 @mcp.tool(
     name="percentage_change",
     description="Calculate the percentage change from old_value to new_value.",
+    annotations={"readOnlyHint": True, "idempotentHint": True},
 )
 def percentage_change(old_value: float, new_value: float) -> str:
     def _run() -> str:
@@ -452,6 +471,7 @@ def percentage_change(old_value: float, new_value: float) -> str:
         "cash_flows (comma/space-separated list, where the first value is "
         "the initial investment at t=0, typically negative)."
     ),
+    annotations={"readOnlyHint": True, "idempotentHint": True},
 )
 def net_present_value(discount_rate: float, cash_flows: str) -> str:
     def _run() -> str:
@@ -520,10 +540,14 @@ def main() -> None:
     """Run the MCP server.
 
     Defaults to stdio transport, which works with the stdio MCP config in
-    ``mcp_servers.json``. Pass ``--sse`` (or ``--http``) to run as a long-lived
-    HTTP server instead — this avoids the async→sync stdio threading issues
-    documented in ``mcp_fixes.md`` (Priority 1). When using SSE/HTTP, point the
-    client config at ``MCPSse`` / ``MCPStreamableHttp`` with the matching host/port.
+    ``mcp_servers.json``. Pass ``--transport sse`` (or ``--transport http``) to
+    run as a long-lived HTTP server instead — this avoids the async→sync stdio
+    threading issues documented in ``mcp_fixes.md`` (Priority 1). HTTP/SSE is
+    opt-in only: requires ``SQWAKVOX_MCP_ALLOW_HTTP=1`` and a non-empty
+    ``SQWAKVOX_MCP_HTTP_TOKEN``; requests must send
+    ``Authorization: Bearer <token>``. When using SSE/HTTP, point the
+    client config at ``MCPSse`` / ``MCPStreamableHttp`` with the matching
+    host/port and the bearer token header.
     """
     import argparse
 
@@ -538,12 +562,7 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8000, help="Port for sse/http transport")
     args = parser.parse_args()
 
-    if args.transport == "stdio":
-        mcp.run(transport="stdio")
-    elif args.transport == "sse":
-        mcp.run(transport="sse", host=args.host, port=args.port)
-    else:
-        mcp.run(transport="streamable-http", host=args.host, port=args.port)
+    run_with_http_guard(mcp, args, server_name="calc")
 
 
 if __name__ == "__main__":

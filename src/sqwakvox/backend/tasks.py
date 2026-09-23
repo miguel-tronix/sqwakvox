@@ -28,7 +28,7 @@ from sqwakvox.controller import AgentResult, AppController
 from sqwakvox.domains import get_domain
 from sqwakvox.domains.base import IngestPlan
 from sqwakvox.guardrails import FinancialValue
-from sqwakvox.models import StructuredDocument
+from sqwakvox.models import ModelProvider, StructuredDocument
 
 logger = logging.getLogger(__name__)
 
@@ -157,7 +157,7 @@ def cross_validate(
 def execute_agent(
     self: Any,
     model_id: str,
-    api_key: str,
+    api_key: str | None,
     user_query: str,
     doc_context: str,
     active_document_name: str,
@@ -167,6 +167,11 @@ def execute_agent(
     domain_id: str = "financial",
 ) -> dict[str, Any] | AgentResult:
     """Execute the LLM agent for a user chat query.
+
+    ``api_key`` is optional: the gateway sends ``None`` and the worker
+    resolves the key from its own environment via
+    :meth:`ModelProvider.get_env_var` (keys never cross the broker).
+    Callers that already hold a key (presenter) may still pass it explicitly.
 
     ``mcp_servers`` is a broker-safe ``model_dump()`` list of any_agent MCP
     configs; we rehydrate them back into ``MCPParams`` here before handing
@@ -181,6 +186,20 @@ def execute_agent(
             error_message="Agent task was cancelled before it started executing.",
         )
         return result.__dict__
+
+    # Resolve API key worker-side when the gateway did not send one.
+    if not api_key:
+        model_id, api_key = ModelProvider.resolve_key(model_id)
+        if not api_key:
+            env_var = ModelProvider.get_env_var(model_id)
+            result = AgentResult(
+                success=False,
+                error_message=(
+                    f"API key for model '{model_id}' ({env_var}) is not set "
+                    "in the worker environment."
+                ),
+            )
+            return result.__dict__
 
     # Rehydrate FinancialValue objects — the presenter sends back strings.
     # Parse the numeric portion so guardrail cross-checks have real values.

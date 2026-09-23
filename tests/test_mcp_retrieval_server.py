@@ -38,3 +38,17 @@ def test_list_indexed_documents_tool(_index_env: None) -> None:
 def test_search_missing_document_returns_empty(_index_env: None) -> None:
     result = retrieval_mcp.search_document("nope", "anything")
     assert "[]" in result
+
+
+def test_search_k_clamped(_index_env: None) -> None:
+    retrieval.index_document("book.epub", [f"chunk {i}" for i in range(100)])
+    result = retrieval_mcp.search_document("book.epub", "chunk", k=10_000)
+    # k is clamped to 50; json array of at most 50 objects
+    assert result.count("chunk_id") <= 50
+
+
+def test_search_query_clamped(_index_env: None) -> None:
+    retrieval.index_document("book.epub", ["factory patterns"])
+    long_q = "factory " * 5_000  # > 8000 chars
+    result = retrieval_mcp.search_document("book.epub", long_q, k=5)
+    assert isinstance(result, str)

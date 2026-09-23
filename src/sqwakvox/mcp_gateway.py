@@ -12,14 +12,13 @@ Launch with:
 from __future__ import annotations
 
 import logging
-import os
 import time
+from collections import deque
 
 from fastmcp import FastMCP
 
 from sqwakvox import session_registry
 from sqwakvox.backend.celery_app import celery_app
-from sqwakvox.models import ModelProvider
 
 logger = logging.getLogger(__name__)
 
@@ -28,8 +27,52 @@ mcp = FastMCP("sqwakvox")
 DEFAULT_MODEL_ID = "openai:gpt-5.5-high"
 
 
+def _clamp_int(value: int, lo: int, hi: int) -> int:
+    return max(lo, min(hi, value))
+
+
+def _clamp_str(value: str, max_len: int) -> str:
+    if len(value) > max_len:
+        return value[:max_len]
+    return value
+
+
+QUERY_MAX_CHARS = 8_000
+_K_MIN, _K_MAX = 1, 50
+_TIMEOUT_MIN, _TIMEOUT_MAX = 5, 600
+
+# In-process rate limit for sqwakvox_query (P1).
+_QUERY_RPM_DEFAULT = 60
+_query_call_times: deque[float] = deque()
+
+
+def _rate_limit_allows(now: float | None = None) -> bool:
+    """Return True if another sqwakvox_query call is within the RPM budget."""
+    import os as _os
+
+    try:
+        rpm = int(_os.environ.get("SQWAKVOX_MCP_QUERY_RPM", str(_QUERY_RPM_DEFAULT)))
+    except ValueError:
+        rpm = _QUERY_RPM_DEFAULT
+    if rpm <= 0:
+        return True
+
+    ts = time.monotonic() if now is None else now
+    window_start = ts - 60.0
+    while _query_call_times and _query_call_times[0] < window_start:
+        _query_call_times.popleft()
+    if len(_query_call_times) >= rpm:
+        return False
+    _query_call_times.append(ts)
+    return True
+
+
 def _trace_tool(tool_name: str, fn: object) -> str:
-    """Record tool usage in telemetry, then run *fn*."""
+    """Record tool usage in telemetry, then run *fn*.
+
+    Full traceback is logged server-side; the caller only receives a generic
+    error message so internals never leak over MCP.
+    """
     from sqwakvox.telemetry import get_telemetry, trace_span
 
     tm = get_telemetry()
@@ -41,7 +84,7 @@ def _trace_tool(tool_name: str, fn: object) -> str:
             logger.error("Gateway tool %s failed: %s", tool_name, exc, exc_info=True)
             if tm.mcp_tool_counter:
                 tm.mcp_tool_counter.add(1, {"tool": tool_name, "status": "failure"})
-            return f"Error: {exc}"
+            return f"Error: tool '{tool_name}' failed. Check server logs for details."
     if tm.mcp_tool_counter:
         tm.mcp_tool_counter.add(1, {"tool": tool_name, "status": "success"})
     if tm.mcp_tool_duration:
@@ -55,6 +98,7 @@ def _trace_tool(tool_name: str, fn: object) -> str:
         "Check Sqwakvox connection status, active session, and loaded document. "
         "Returns whether Redis is reachable and the active document name and domain."
     ),
+    annotations={"readOnlyHint": True},
 )
 def sqwakvox_status() -> str:
     """Return status of the Sqwakvox session and backend."""
@@ -91,6 +135,7 @@ def sqwakvox_status() -> str:
 @mcp.tool(
     name="sqwakvox_list_documents",
     description="List all documents currently open in Sqwakvox, their domains, and table counts.",
+    annotations={"readOnlyHint": True},
 )
 def sqwakvox_list_documents() -> str:
     """List loaded documents recorded in the session registry."""
@@ -116,35 +161,16 @@ def sqwakvox_list_documents() -> str:
     return _trace_tool("sqwakvox_list_documents", _run)
 
 
-def _resolve_model_and_key(preferred_model: str | None = None) -> tuple[str, str]:
-    """Resolve the model ID and API key from environment variables."""
-    model_id = preferred_model or DEFAULT_MODEL_ID
-    env_var = ModelProvider.get_env_var(model_id)
-    api_key = os.environ.get(env_var, "").strip()
-
-    if not api_key:
-        for alt_var in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GEMINI_API_KEY"):
-            val = os.environ.get(alt_var, "").strip()
-            if val:
-                api_key = val
-                if alt_var == "OPENAI_API_KEY":
-                    model_id = "openai:gpt-5.5-high"
-                elif alt_var == "ANTHROPIC_API_KEY":
-                    model_id = "anthropic:claude-4.6"
-                elif alt_var == "GEMINI_API_KEY":
-                    model_id = "gemini:gemini-3.5-flash"
-                break
-    return model_id, api_key
-
-
 @mcp.tool(
     name="sqwakvox_query",
     description=(
         "Query the active document in Sqwakvox using its domain-specific expert "
         "(financial analysis with table cross-validation, or SWE engineering reference). "
         "Args: query (user question), doc_name (optional, specify a particular document), "
-        "timeout (seconds, default 120). Guardrails and validation are enforced."
+        "timeout (seconds, default 120, clamped 5-600). Guardrails and validation "
+        "are enforced."
     ),
+    annotations={"readOnlyHint": True, "idempotentHint": False},
 )
 def sqwakvox_query(
     query: str,
@@ -154,6 +180,11 @@ def sqwakvox_query(
     """Send a query to Sqwakvox's agent and await the response."""
 
     def _run() -> str:
+        if not _rate_limit_allows():
+            return "Error: rate limit exceeded for sqwakvox_query. Retry shortly."
+
+        safe_query = _clamp_str(query, QUERY_MAX_CHARS)
+        safe_timeout = _clamp_int(timeout, _TIMEOUT_MIN, _TIMEOUT_MAX)
         target_name = doc_name.strip() if doc_name else None
         payload = session_registry.get_document_payload(target_name)
 
@@ -170,20 +201,19 @@ def sqwakvox_query(
         queue = payload.get("queue") or "sqwakvox"
         thread_id = payload.get("thread_id") or active_doc_name
 
-        # Resolve API key and model ID
-        model_id, api_key = _resolve_model_and_key(payload.get("model_id"))
+        # Only the model ID crosses the broker; the worker resolves its own API key.
+        model_id = payload.get("model_id") or DEFAULT_MODEL_ID
 
-        if not api_key:
-            env_var = ModelProvider.get_env_var(model_id)
-            return f"Error: API key for model '{model_id}' ({env_var}) is not set in environment."
-
-        # Dispatch Celery task to the tab's worker queue
+        # Dispatch Celery task to the tab's worker queue.
+        # api_key slot is None — execute_agent resolves it from worker env.
+        # FastMCP runs sync tools with run_in_thread=True, so .get() here does
+        # not block the MCP event loop; other tools keep running in parallel.
         async_result = celery_app.send_task(
             "sqwakvox.backend.tasks.execute_agent",
             args=[
                 model_id,
-                api_key,
-                query,
+                None,  # api_key: resolved worker-side, never sent over the broker
+                safe_query,
                 doc_context,
                 active_doc_name,
                 data_store,
@@ -195,9 +225,10 @@ def sqwakvox_query(
         )
 
         try:
-            raw_res = async_result.get(timeout=timeout)
+            raw_res = async_result.get(timeout=safe_timeout)
         except Exception as exc:
-            return f"Error waiting for Sqwakvox agent: {exc}"
+            logger.error("sqwakvox_query wait failed: %s", exc, exc_info=True)
+            return "Error waiting for Sqwakvox agent (see server logs)."
 
         if not raw_res:
             return "Error: Sqwakvox agent returned an empty response."
@@ -227,6 +258,7 @@ def sqwakvox_query(
 @mcp.tool(
     name="sqwakvox_get_tables",
     description="Retrieve extracted tables and financial metrics for the active document.",
+    annotations={"readOnlyHint": True},
 )
 def sqwakvox_get_tables(doc_name: str = "") -> str:
     """Return raw data store tables extracted by Docling."""
@@ -254,8 +286,10 @@ def sqwakvox_get_tables(doc_name: str = "") -> str:
     name="sqwakvox_search_swe_chunks",
     description=(
         "Search SQLite FTS5 index of ingested software engineering (SWE) books. "
-        "Args: query (keywords), doc_id (optional document name), k (max chunks, default 5)."
+        "Args: query (keywords), doc_id (optional document name), k (max chunks, "
+        "default 5, clamped 1-50)."
     ),
+    annotations={"readOnlyHint": True},
 )
 def sqwakvox_search_swe_chunks(query: str, doc_id: str = "", k: int = 5) -> str:
     """Search chunks in SQLite FTS5 index for SWE documents."""
@@ -263,6 +297,8 @@ def sqwakvox_search_swe_chunks(query: str, doc_id: str = "", k: int = 5) -> str:
     def _run() -> str:
         from sqwakvox.domains.swe import retrieval
 
+        safe_query = _clamp_str(query, QUERY_MAX_CHARS)
+        safe_k = _clamp_int(k, _K_MIN, _K_MAX)
         target_doc = doc_id.strip()
         if not target_doc:
             active = session_registry.get_active_session()
@@ -276,9 +312,9 @@ def sqwakvox_search_swe_chunks(query: str, doc_id: str = "", k: int = 5) -> str:
                 return "No SWE documents have been indexed in SQLite FTS5 yet."
             target_doc = indexed[0][0]
 
-        chunks = retrieval.search_document(target_doc, query, k=k)
+        chunks = retrieval.search_document(target_doc, safe_query, k=safe_k)
         if not chunks:
-            return f"No matching chunks found in '{target_doc}' for query: '{query}'."
+            return f"No matching chunks found in '{target_doc}' for query: '{safe_query}'."
 
         results = [f"Found {len(chunks)} chunk(s) in '{target_doc}':"]
         for idx, chunk in enumerate(chunks, 1):
@@ -293,6 +329,7 @@ def sqwakvox_search_swe_chunks(query: str, doc_id: str = "", k: int = 5) -> str:
 @mcp.tool(
     name="sqwakvox_list_skills",
     description="List reusable engineering skills currently stored in Sqwakvox.",
+    annotations={"readOnlyHint": True},
 )
 def sqwakvox_list_skills() -> str:
     """List SWE skills available in Sqwakvox."""
@@ -313,9 +350,15 @@ def sqwakvox_list_skills() -> str:
 
 
 def main() -> None:
-    """Run the MCP Gateway server over stdio."""
+    """Run the MCP Gateway server over stdio only.
+
+    The gateway is intentionally stdio-only: exposing it over SSE/HTTP would
+    put the Redis session registry and Celery dispatch behind an unauthenticated
+    network socket. Sibling servers (calc/skills/retrieval) may opt into HTTP
+    with ``SQWAKVOX_MCP_ALLOW_HTTP=1`` + ``SQWAKVOX_MCP_HTTP_TOKEN``.
+    """
     logging.basicConfig(level=logging.INFO)
-    mcp.run()
+    mcp.run(transport="stdio")
 
 
 if __name__ == "__main__":
