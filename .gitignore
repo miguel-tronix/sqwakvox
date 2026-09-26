@@ -25,3 +25,6 @@ celerybeat.pid
 # Node modules
 
 node_modules/*
+.vscode/*
+.coverage
+.vscode/settings.json
