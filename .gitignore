@@ -15,8 +15,6 @@ sqwakvox_telemetry.jsonl
 run_worker_error.txt
 *.log
 *.jsonl
-# VSCode
-.vscode
 
 # Celery beat runtime artifacts
 celerybeat-schedule
@@ -25,6 +23,5 @@ celerybeat.pid
 # Node modules
 
 node_modules/*
-.vscode/*
 .coverage
 .vscode/settings.json
