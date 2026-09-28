@@ -1,5 +1,5 @@
 {
-    "python.languageServer": "None",
+    "python.languageServer": "Default",
     "python.testing.pytestArgs": [
         "tests"
     ],

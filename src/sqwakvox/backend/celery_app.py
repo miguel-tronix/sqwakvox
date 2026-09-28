@@ -47,7 +47,13 @@ celery_app.conf.update(
     task_time_limit=int(os.environ.get("SQWAKVOX_CELERY_TASK_TIME_LIMIT", "1860")),
     task_soft_time_limit=int(os.environ.get("SQWAKVOX_CELERY_TASK_SOFT_TIME_LIMIT", "1800")),
     worker_prefetch_multiplier=1,
-    worker_max_tasks_per_child=20,
+    # Recycling bound.  Originally 20, when each Docling task built its own
+    # DocumentConverter and the bound was a real memory guard.  Conversion is
+    # now the only thing that grows, and each recycle costs a fresh ~11 s
+    # docling import — the ingest worker restarted 44 times in one session at
+    # the old value.  Raised so a long ingest session keeps its warm pipeline;
+    # lower it (or set 0 to disable) on a memory-constrained machine.
+    worker_max_tasks_per_child=int(os.environ.get("SQWAKVOX_CELERY_MAX_TASKS_PER_CHILD", "200")),
 )
 
 
