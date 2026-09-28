@@ -92,6 +92,49 @@ def pdf_page_count(source: str) -> int | None:
         return None
 
 
+#: Number of leading pages sampled by :func:`pdf_has_text_layer`.  A handful is
+#: enough: a PDF is either born digital (text on every page) or born scanned
+#: (no text anywhere), so sampling a few pages distinguishes the two cheaply.
+_TEXT_LAYER_PROBE_PAGES = 3
+
+
+def pdf_has_text_layer(source: str) -> bool:
+    """Return True when *source* is a local PDF with extractable text.
+
+    A digital PDF already carries a text layer, so running Docling's OCR over
+    it is redundant work — on a CPU-only machine OCR is roughly a third of the
+    total conversion time.  A scan has no text layer and genuinely needs OCR.
+
+    Deliberately conservative, because the cost of a wrong ``True`` is a
+    garbage document while the cost of a wrong ``False`` is merely slow:
+
+    * non-PDF, non-local, and unreadable sources return ``False`` (use OCR);
+    * only the first :data:`_TEXT_LAYER_PROBE_PAGES` pages are read, and any
+      one of them carrying text is enough to skip OCR.
+
+    A malformed text layer (wrong encoding) is not detected here; it decodes to
+    mojibake rather than raising.  Such a document is the one case where this
+    shortcut loses accuracy, and it is a deliberate trade for the speedup.
+    """
+    if not source.lower().endswith(".pdf"):
+        return False
+    if not Path(source).is_file():
+        return False
+    try:
+        with pdfium.PdfDocument(source) as pdf:
+            for index in range(min(_TEXT_LAYER_PROBE_PAGES, len(pdf))):
+                textpage = pdf[index].get_textpage()
+                try:
+                    if textpage.get_text_range().strip():
+                        return True
+                finally:
+                    textpage.close()
+    except Exception as exc:  # probing must never break parsing
+        logger.warning("pdf_has_text_layer failed for %s: %s", source, exc)
+        return False
+    return False
+
+
 def _unwrap_timeout_cause() -> SoftTimeLimitExceeded | None:
     """Inspect the current exception chain for a wrapped timeout.
 
@@ -142,6 +185,11 @@ class AppController:
         init cost — per-document agent workers never touch it at all.
         """
         self._converter = converter
+        self._no_ocr_converter: DocumentConverter | None = None
+        # A converter handed in explicitly (tests, custom pipelines) is used
+        # verbatim: honouring the OCR-skip toggle would silently swap it for a
+        # real Docling instance and run the slow path the caller opted out of.
+        self._converter_injected = converter is not None
 
     @property
     def converter(self) -> DocumentConverter:
@@ -158,6 +206,29 @@ class AppController:
     def converter(self, value: DocumentConverter) -> None:
         """Allow injecting a converter (tests / custom pipelines)."""
         self._converter = value
+        self._converter_injected = True
+
+    @property
+    def no_ocr_converter(self) -> DocumentConverter:
+        """A :class:`DocumentConverter` with OCR disabled, built on first use.
+
+        Used for PDFs that already carry a text layer, where OCR would only
+        re-derive text Docling can read directly.  Table structure detection
+        stays on — the financial cross-validation depends on the tables.  Built
+        lazily and cached separately from :attr:`converter` so that OCR-based
+        ingestion never pays to construct it, and vice versa.
+        """
+        if self._no_ocr_converter is None:
+            from docling.datamodel.base_models import InputFormat
+            from docling.datamodel.pipeline_options import PdfPipelineOptions
+            from docling.document_converter import DocumentConverter, PdfFormatOption
+
+            pipeline_options = PdfPipelineOptions()
+            pipeline_options.do_ocr = False
+            self._no_ocr_converter = DocumentConverter(
+                format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)}
+            )
+        return self._no_ocr_converter
 
     def convert_document(
         self,
@@ -178,7 +249,18 @@ class AppController:
                     # of blocking on one monolithic conversion that blows the
                     # Celery time limit.
                     convert_kwargs["page_range"] = (int(page_range[0]), int(page_range[1]))
-                result = self.converter.convert(source, **convert_kwargs)
+
+                # Skip OCR when the PDF already carries a text layer; OCR is
+                # roughly a third of CPU-only conversion time and is pure
+                # waste on a digital document.  Scans fall through to the
+                # default converter, which OCRs as before.
+                skip_ocr = pdf_has_text_layer(source) and not self._converter_injected
+                converter = self.no_ocr_converter if skip_ocr else self.converter
+                span.set_attribute("ocr_skipped", skip_ocr)
+                if skip_ocr:
+                    logger.info("PDF has a text layer; skipping OCR for %s", source)
+
+                result = converter.convert(source, **convert_kwargs)
                 if is_cancelled():
                     logger.info("Docling parsing worker was cancelled.")
                     span.set_attribute("cancelled", True)

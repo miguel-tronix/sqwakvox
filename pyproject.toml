@@ -45,6 +45,7 @@ dependencies = [
     "ebooklib>=0.20",
     # Cheap PDF page count (no OCR) so large PDFs load incrementally by slice.
     "pypdfium2>=4.0.0",
+    "pytest-cov>=7.1.0",
 ]
 
 [dependency-groups]
