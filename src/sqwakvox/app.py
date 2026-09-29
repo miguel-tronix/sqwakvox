@@ -473,16 +473,7 @@ class SqwakvoxApp(App[None]):
         lets the calc-stats server run as a long-lived process and sidesteps the
         async->sync stdio threading issues (see mcp_fixes.md, Priority 1).
         """
-        from any_agent.config import MCPStdio
-
-        try:
-            from any_agent.config import MCPSse, MCPStreamableHttp
-        except ImportError:  # pragma: no cover - older any-agent
-            sse_class: object | None = None
-            http_class: object | None = None
-        else:
-            sse_class = MCPSse
-            http_class = MCPStreamableHttp
+        from sqwakvox.mcp import MCPStdio
 
         self.mcp_configs = []
 
@@ -509,9 +500,7 @@ class SqwakvoxApp(App[None]):
                         timeout_seconds = srv.get("client_session_timeout_seconds", 300.0)
 
                         if "url" in srv:
-                            mcp_opt = self._build_http_mcp(
-                                srv, timeout_seconds, sse_class, http_class
-                            )
+                            mcp_opt = self._build_http_mcp(srv, timeout_seconds)
                         elif "command" in srv:
                             cmd = srv["command"]
                             args = srv.get("args", [])
@@ -599,25 +588,19 @@ class SqwakvoxApp(App[None]):
     def _build_http_mcp(
         srv: dict[str, Any],
         timeout_seconds: float,
-        mcp_sse: Any | None,
-        mcp_http: Any | None,
     ) -> Any | None:
+        from sqwakvox.mcp import MCPSse, MCPStreamableHttp
+
         transport = srv.get("transport", "sse")
         url = srv["url"]
         headers = srv.get("headers")
         if transport == "http":
-            if mcp_http is None:
-                logger.error("MCPStreamableHttp unavailable; skipping %s", url)
-                return None
-            return mcp_http(
+            return MCPStreamableHttp(
                 url=url,
                 headers=headers,
                 client_session_timeout_seconds=timeout_seconds,
             )
-        if mcp_sse is None:
-            logger.error("MCPSse unavailable; skipping %s", url)
-            return None
-        return mcp_sse(
+        return MCPSse(
             url=url,
             headers=headers,
             client_session_timeout_seconds=timeout_seconds,
@@ -1316,7 +1299,7 @@ class SqwakvoxApp(App[None]):
         # Dispatch the agent execution as an async Textual worker.
         self._active_agent_handles[user_query] = self.run_worker(
             self._dispatch_agent(selected_model, api_key, user_query),
-            name="any_agent_worker",
+            name="agent_worker",
         )
 
     async def _dispatch_agent(self, model_id: str, api_key: str, user_query: str) -> None:
@@ -1379,7 +1362,7 @@ class SqwakvoxApp(App[None]):
             )
 
         # --- Step 2: serialise the active domain's MCP server configs ---
-        # any_agent MCP configs are Pydantic models; model_dump() yields a
+        # MCP configs are Pydantic models; model_dump() yields a
         # broker-safe dict that the worker rehydrates into MCPParams.
         mcp_servers: list[dict[str, Any]] = [
             cfg.model_dump() for cfg in self._mcp_configs_for(domain_id)

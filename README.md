@@ -12,7 +12,7 @@
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue)](https://python.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-Sqwakvox is a terminal user interface application for **document analysis with multiple expert assistants**. It uses IBM Docling to read documents (PDFs, EPUBs, URLs), connects to language models through Mozilla any-agent, and runs domain-specific guardrails, rendering, and tools.
+Sqwakvox is a terminal user interface application for **document analysis with multiple expert assistants**. It uses IBM Docling to read documents (PDFs, EPUBs, URLs), connects to language models through LangChain and Mozilla any-llm, and runs domain-specific guardrails, rendering, and tools.
 
 - **Financial** — tables, sparkline trends, numerical cross-validation, calc-stats MCP tools.
 - **Software Engineering (SWE)** — library docs, PDF/EPUB engineering books (e.g. Martin Fowler); builds TOC + code-block indexes and can author reusable **skill files** during a chat.
