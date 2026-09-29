@@ -30,9 +30,9 @@ def _setup_chat_logging() -> None:
         lg.addHandler(chat_handler)
         lg.propagate = False
 
-    logging.getLogger("any_agent").setLevel(logging.DEBUG)
-    logging.getLogger("any_agent").addHandler(chat_handler)
-    logging.getLogger("any_agent").propagate = False
+    logging.getLogger("any_llm").setLevel(logging.DEBUG)
+    logging.getLogger("any_llm").addHandler(chat_handler)
+    logging.getLogger("any_llm").propagate = False
 
 
 def main() -> None:
