@@ -28,6 +28,7 @@ Trimmed relative to the original:
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import suppress
 from typing import Any, cast
@@ -63,6 +64,41 @@ from langchain_core.runnables import Runnable
 from langchain_core.tools import BaseTool
 from langchain_core.utils.function_calling import convert_to_openai_tool
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
+
+
+def _patch_gemini_provider() -> None:
+    """Monkey-patch any_llm Gemini utils to convert role='function' to role='user'.
+
+    Google GenAI SDK only supports 'user' and 'model' roles. When tool responses
+    are returned with role='function', Gemini API fails with:
+    400 INVALID_ARGUMENT: "Role 'function' is not supported. Please use a valid role".
+    """
+    try:
+        import any_llm.providers.gemini.utils as gemini_utils
+
+        if getattr(gemini_utils, "_sqwakvox_patched", False):
+            return
+
+        original_convert = gemini_utils._convert_messages
+
+        def patched_convert_messages(
+            messages: list[dict[str, Any]], provider_name: str = "gemini"
+        ) -> tuple[list[Any], str | None]:
+            formatted_messages, system_instruction = original_convert(messages, provider_name)
+            for msg in formatted_messages:
+                if getattr(msg, "role", None) == "function":
+                    msg.role = "user"
+            return formatted_messages, system_instruction
+
+        gemini_utils._convert_messages = patched_convert_messages
+        gemini_utils._sqwakvox_patched = True  # type: ignore[attr-defined]
+    except Exception as exc:
+        logger.warning("Failed to apply Gemini provider role patch: %s", exc)
+
+
+_patch_gemini_provider()
 
 __all__ = ["ChatAnyLLM", "build_chat_model"]
 

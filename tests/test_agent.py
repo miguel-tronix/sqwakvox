@@ -483,10 +483,10 @@ async def test_invoke_agent_raises_when_no_messages() -> None:
 
 
 def test_gemini_accepts_tool_role_messages() -> None:
-    """Regression guard for the removed role='function' monkeypatch.
+    """Regression guard for Gemini tool role compatibility.
 
     The ReAct loop emits ToolMessage, which any-llm maps to role="tool"; the
-    Gemini provider must translate that to a role it accepts.
+    Gemini provider must translate that to a role it accepts ('user' or 'model').
     """
     import any_llm.providers.gemini.utils as gemini_utils
 
