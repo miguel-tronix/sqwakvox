@@ -126,7 +126,7 @@ dependencies = [
 ]
 ```
 
-This package provides `ChatBedrock` which `any-agent` / LangChain uses under the hood when the model ID starts with `bedrock:`.
+This package provides `ChatBedrock`, which `any-llm` uses under the hood when the model ID starts with `bedrock:`.
 
 ---
 

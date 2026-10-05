@@ -8,13 +8,14 @@ The application uses language models to analyze financial documents and extract 
 
 3. Core Features
 - Document Processing: The document module uses Docling to extract text and tables from PDF files.
-- AI Agent: The agent harness uses Mozilla any-agent and LangChain to answer user questions about documents.
+- AI Agent: The agent harness uses LangGraph and LangChain, with Mozilla any-llm for provider access, to answer user questions about documents.
 - Document Display: The display module shows extracted document text so users can read the source content.
 - Data Extraction: The extraction module gets structured data from financial tables.
 - Data Quality: The system uses Mozilla any-guardrail to validate queries and responses for compliance and safety.
 
 4. Key Libraries
-- any-agent: Manages language model agent workflows.
+- LangGraph / LangChain: Run the model agent loop and MCP tool execution.
+- any-llm: Provides one provider interface for model access.
 - textual: Provides the terminal user interface.
 - docling: Parses documents and extracts table data.
 - any-guardrail: Validates queries and responses for safety and compliance.
@@ -26,10 +27,10 @@ The application uses language models to analyze financial documents and extract 
 - Saved application screenshots in the screenshots directory.
 
 6. Development Strategy
-The design combines any-agent, LangChain, and document analysis modules into an agent harness. Textual provides the terminal interface for document display and agent chat. Mozilla any-guardrail inspects input queries and model outputs.
+The design combines LangGraph, LangChain, any-llm, and document analysis modules into an agent harness. Textual provides the terminal interface for document display and agent chat. Mozilla any-guardrail inspects input queries and model outputs.
 
 7. Error Analysis
-The team fixed integration issues between any-agent and LangChain. The application writes debug logs to sqwakvox.log and chat logs to sqwakvoxchat.log.
+The team fixed integration issues between the agent harness, LangChain, and MCP servers. The application writes debug logs to sqwakvox.log and chat logs to sqwakvoxchat.log.
 
 8. Planned Improvements
 - Support more document formats.

@@ -26,7 +26,7 @@ Feature: Multi-Provider LLM Agent Execution and Chat
   @security @credentials
   Scenario: Temporarily inject API credentials into environment during query execution
     Given an API key provided at runtime in the UI
-    When the AnyAgent orchestrator executes the model query
+    When the agent orchestrator executes the model query
     Then the API key should be temporarily injected into the environment
     And after query completion the environment variable should be restored to its original state
 
