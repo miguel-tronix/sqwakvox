@@ -19,20 +19,19 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from any_agent.config import MCPParams
 from celery import shared_task
-from pydantic import TypeAdapter
 
 from sqwakvox.backend.celery_app import celery_app  # noqa: F401 — registers tasks
 from sqwakvox.controller import AgentResult, AppController
 from sqwakvox.domains import get_domain
 from sqwakvox.domains.base import IngestPlan
 from sqwakvox.guardrails import FinancialValue
+from sqwakvox.mcp import McpConnection
 from sqwakvox.models import ModelProvider, StructuredDocument
 
 logger = logging.getLogger(__name__)
 
-MCP_SERVERS_ADAPTER: TypeAdapter[list[MCPParams]] = TypeAdapter(list[MCPParams])
+MCP_SERVERS_ADAPTER = McpConnection
 
 
 def _get_controller() -> AppController:
@@ -173,9 +172,9 @@ def execute_agent(
     :meth:`ModelProvider.get_env_var` (keys never cross the broker).
     Callers that already hold a key (presenter) may still pass it explicitly.
 
-    ``mcp_servers`` is a broker-safe ``model_dump()`` list of any_agent MCP
-    configs; we rehydrate them back into ``MCPParams`` here before handing
-    them to the controller.  ``domain_id`` selects the agent prompts and the
+    ``mcp_servers`` is a broker-safe ``model_dump()`` list of MCP configs;
+    we rehydrate them back into ``MCPParams`` here before handing them to the
+    controller.  ``domain_id`` selects the agent prompts and the
     guardrail pipeline.
     """
     controller = _get_controller()

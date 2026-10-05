@@ -1,8 +1,7 @@
 from unittest.mock import patch
 
-from any_agent.config import MCPStdio
-
 from sqwakvox.backend import tasks as tasks_mod
+from sqwakvox.mcp import MCPStdio
 from sqwakvox.models import StructuredDocument, TableData
 
 

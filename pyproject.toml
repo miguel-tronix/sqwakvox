@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "sqwakvox"
-version = "1.5.1"
+version = "1.6.0"
 description = "Local AI Financial Document Assistant with Textual TUI, Docling Ingestion, and Mozilla any-guardrail Validation"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -24,14 +24,16 @@ dependencies = [
     "any-guardrail>=0.1.0",
     "pydantic>=2.6.0",
     "jinja2>=3.1.0",
-    "any-agent[langchain]>=1.18.0",
+    # any-llm provides one `"provider:model"` interface over every LLM
+    # provider (see src/sqwakvox/llm.py). any-guardrail also requires it.
+    "any-llm-sdk>=1.15.0",
+    "langchain-core>=1.0.0",
+    "langgraph>=1.0.0",
+    "langchain-mcp-adapters>=0.2.2",
     "google-genai>=2.6.0",
     # fastmcp 3.x requires mcp<2.0 (its server imports McpError from
     # mcp.shared.exceptions, removed in mcp 2.0.0). Keep the upper bound so a
     # resolver can never pull in an incompatible mcp 2.x again.
-    # FastMCP 4 + mcp 2.x is deferred: any-agent[langchain] pulls
-    # langchain-mcp-adapters which hard-caps mcp<2.0.0. Revisit when that
-    # constraint is lifted.
     "mcp>=1.29.0,<2.0",
     "mypy>=2.1.0",
     "pytest>=9.0.3",
