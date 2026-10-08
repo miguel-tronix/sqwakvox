@@ -22,6 +22,7 @@ Sqwakvox is a terminal user interface application for **document analysis with m
 ## Features
 
 - **3-Pane TUI**: The interface has a sidebar, a document render pane, and a chat log.
+- **Web Presenter**: The same 3-pane interface in the browser, with live progress over SSE. Both views share one session, and the whole presenter API is published as **24 MCP tools** so any MCP client can drive either.
 - **Multiple expert types**: Pick the "Agent Expert Type" when loading a document; each tab keeps its own domain (prompts, guardrails, rendering, tools).
 - **Docling Integration**: The application parses local PDF/EPUB/Markdown files and remote URLs, and can **crawl a docs site** (sitemap-aware, same-host, capped) for multi-page library documentation.
 - **Multi-Model Support**: The application connects to OpenAI, Anthropic, Mistral, and Gemini models.
@@ -65,6 +66,13 @@ Domains are declared in the registry (`sqwakvox/domains/`) — a `DocumentDomain
 │  └───────────────────────────┘   └────────────────────────┘ │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+The TUI is not the only view. `DocSession` (`sqwakvox/doc_session.py`) owns the
+widget-free session logic — document registry, worker queues, chat history,
+background jobs, and an event bus — and both the TUI and the
+[web presenter](#web-presenter) drive it. The session publishes its whole API
+as MCP tools (`sqwakvox/mcp_presenter.py`), so the browser, the TUI, and any
+external MCP client all operate on one session through one interface.
 
 ### Running the backend
 
@@ -124,6 +132,12 @@ Run the application:
 
 ```bash
 sqwakvox
+```
+
+Or start the browser view instead (same workflow, same session):
+
+```bash
+sqwakvox-web
 ```
 
 Follow these steps to analyze a document:
@@ -188,8 +202,93 @@ mcp_servers:
 - **Stdio transport**: The gateway runs over stdio only (`uv run python -m sqwakvox.mcp_gateway`).
 - **Worker-side API keys**: API keys do not cross the Celery broker; worker processes resolve their own provider keys from the worker environment.
 - `SQWAKVOX_MCP_QUERY_RPM`: In-process rate limit for `sqwakvox_query` (default: 60 RPM).
-- `SQWAKVOX_MCP_ALLOW_HTTP=1` & `SQWAKVOX_MCP_HTTP_TOKEN=<token>`: Required if running sibling servers (`calc`, `skills`, `retrieval`) over SSE or HTTP transport.
+- `SQWAKVOX_MCP_ALLOW_HTTP=1` & `SQWAKVOX_MCP_HTTP_TOKEN=<token>`: Required if running sibling servers (`calc`, `skills`, `retrieval`) or the presenter server over SSE or HTTP transport.
 - `SQWAKVOX_MCP_READ_ONLY=1`: Enforces read-only mode on the skills server (blocks `create_skill`, `update_skill`, `delete_skill`).
+
+## Web Presenter
+
+The browser is a second view of the same session the TUI drives. Start it:
+
+```bash
+redis-server &
+uv run sqwakvox-web          # http://127.0.0.1:8760
+```
+
+The web UI mirrors the TUI's three panes — sidebar (source, expert type,
+model, API key, document tabs, skills, MCP servers), the rendered document,
+and the chat pane — plus incremental "Load more" paging for large PDFs and
+`Ctrl+X`-equivalent cross-validation. Press **F2** in the browser for the MCP
+tool console.
+
+### One presenter, many views
+
+Every action in both views goes through the same code path:
+
+```
+                 ┌───────────────────────────────┐
+                 │  DocSession (doc_session.py)  │
+                 │  documents · chat · jobs ·    │
+                 │  events · MCP configs         │
+                 └───────────────┬───────────────┘
+                                 │
+                    ┌────────────┴────────────┐
+                    │ Presenter → Celery bus  │
+                    └────────────┬────────────┘
+                                 │
+        ┌────────────────────────┼────────────────────────┐
+        ▼                        ▼                        ▼
+  Textual TUI            MCP presenter server        Web presenter
+  (app.py)          (mcp_presenter.py, 24 tools)   (web_presenter.py)
+                                                  calls the MCP tools
+                                                  in-process + SSE events
+```
+
+`DocSession` holds no widget references and owns a private asyncio loop, so it
+can be driven from a Textual worker, an MCP stdio thread, or an ASGI worker
+thread. Adding a tool to `sqwakvox_presenter_*` adds it to the browser
+automatically — the web UI builds its forms from the tool JSON Schemas it
+fetches at `/api/tools`, so the two surfaces cannot drift apart.
+
+### Presenter MCP tools
+
+`python -m sqwakvox.mcp_presenter` (stdio) publishes 24 tools covering the
+whole session:
+
+| Area | Tools |
+|---|---|
+| Status | `status`, `list_domains`, `list_models`, `jobs`, `events` |
+| Documents | `open_document` (+`_sync`), `activate_document`, `close_document`, `document`, `list_documents`, `load_more` |
+| Analysis | `cross_validate` (+`_async`), `data_store` |
+| Chat | `ask` (+`_sync`), `chat`, `clear_chat` |
+| Skills & retrieval | `list_skills`, `search_chunks`, `indexed_documents` |
+
+Long operations (Docling parses, agent queries) return a `job_id`; collect the
+result with `wait_job`, stop it with `cancel`, or follow progress by polling
+`events` with the `seq` cursor. The `*_sync` variants block instead.
+
+Run it over HTTP for non-stdio clients (both variables required):
+
+```bash
+SQWAKVOX_MCP_ALLOW_HTTP=1 SQWAKVOX_MCP_HTTP_TOKEN=secret \
+  uv run python -m sqwakvox.mcp_presenter --transport http --port 8765
+```
+
+### Web presenter security
+
+- **Loopback by default.** Binds `127.0.0.1` and rejects non-local `Host`
+  headers, which blocks DNS-rebinding attacks.
+- **Token-gated API.** With `SQWAKVOX_WEB_TOKEN` set, every `/api/*` route
+  requires `Authorization: Bearer <token>`; the browser stores it in
+  `sessionStorage`. Binding a non-loopback address without a token generates
+  one and logs it.
+- **`--allow-remote`** relaxes the `Host` check for reverse-proxy setups.
+- **`--no-token`** serves the API unauthenticated (local use only).
+- **API keys stay in the browser tab** — they are forwarded per request, never
+  written to disk, and worker processes still resolve their own keys from the
+  environment.
+
+Web endpoints: `GET /`, `GET /healthz`, `GET /api/tools`, `POST /api/call`,
+`GET /api/events` (SSE).
 
 ### Keybindings
 
@@ -202,6 +301,9 @@ mcp_servers:
 | `Tab` | Cycle through panes (source → render → chat) |
 | `Up/Down` | Scroll focused pane |
 | `Ctrl+X` | Run numerical cross-validation on loaded tables |
+
+In the web presenter: `Enter` sends a chat message, `Shift+Enter` adds a
+newline, and `F2` opens the MCP tool console.
 
 ## Configuration
 

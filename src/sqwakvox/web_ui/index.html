@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sqwakvox — Web Presenter</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div id="gate" class="gate hidden">
+      <form id="gate-form" class="gate-card">
+        <h1>Sqwakvox</h1>
+        <p>This presenter requires an API token.</p>
+        <input id="gate-token" type="password" placeholder="Access token" autocomplete="current-password" />
+        <button type="submit">Unlock</button>
+        <p id="gate-error" class="error"></p>
+      </form>
+    </div>
+
+    <div id="app" class="app hidden">
+      <aside class="sidebar">
+        <h1 class="brand">SQWAKVOX <span class="brand-sub">web presenter</span></h1>
+
+        <label class="field">
+          <span>Document source</span>
+          <input id="source" type="text" placeholder="report.pdf, book.epub, https://docs.site" />
+        </label>
+
+        <div class="row">
+          <label class="field grow">
+            <span>Agent expert type</span>
+            <select id="domain"></select>
+          </label>
+          <label class="field check" title="Crawl a SWE docs site">
+            <input id="crawl" type="checkbox" />
+            <span>Crawl site</span>
+          </label>
+        </div>
+
+        <div class="row">
+          <label class="field grow">
+            <span>Model</span>
+            <select id="model"></select>
+          </label>
+        </div>
+
+        <label class="field">
+          <span>API key <em id="key-hint"></em></span>
+          <input id="api-key" type="password" placeholder="resolved on the worker if empty" />
+        </label>
+
+        <div class="actions">
+          <button id="btn-open" class="primary">Load &amp; Parse</button>
+          <button id="btn-cancel" disabled>Cancel</button>
+        </div>
+
+        <section class="pane">
+          <h2>Documents</h2>
+          <ul id="doc-list" class="doc-list"></ul>
+        </section>
+
+        <section class="pane">
+          <h2>Skills</h2>
+          <ul id="skill-list" class="skill-list"></ul>
+        </section>
+
+        <section class="pane">
+          <h2>MCP servers</h2>
+          <ul id="mcp-list" class="mcp-list"></ul>
+        </section>
+      </aside>
+
+      <main class="center">
+        <nav class="tabs" id="tabs"></nav>
+        <div class="viewbar">
+          <div class="tabs small" id="view-tabs">
+            <button data-view="document" class="active">Document</button>
+            <button data-view="agent">Agent response</button>
+          </div>
+          <div class="pager" id="pager"></div>
+        </div>
+        <pre id="document-view" class="document-view"></pre>
+        <pre id="agent-view" class="agent-view hidden"></pre>
+      </main>
+
+      <section class="chat">
+        <header class="chat-header">
+          <h2>Chat</h2>
+          <div class="chat-tools">
+            <button id="btn-xvalidate" title="Financial cross-validation">Cross-validate</button>
+            <button id="btn-clear-chat">Clear</button>
+          </div>
+        </header>
+        <div id="chat-log" class="chat-log"></div>
+        <form id="chat-form" class="chat-form">
+          <textarea id="chat-input" rows="2" placeholder="Ask the document's expert… (Enter to send, Shift+Enter for newline)"></textarea>
+          <button type="submit" class="primary">Send</button>
+        </form>
+      </section>
+    </div>
+
+    <footer id="status" class="status">
+      <span id="status-text">starting…</span>
+      <span class="spacer"></span>
+      <span id="conn" class="conn">disconnected</span>
+    </footer>
+
+    <div id="toast" class="toast hidden"></div>
+
+    <dialog id="tools-dialog" class="tools-dialog">
+      <form method="dialog">
+        <h2>MCP tool console</h2>
+        <p class="hint">Every Sqwakvox action is an MCP tool. Call any of them here.</p>
+        <select id="tool-picker"></select>
+        <p id="tool-desc" class="hint"></p>
+        <div id="tool-args"></div>
+        <pre id="tool-output" class="tool-output"></pre>
+        <menu>
+          <button value="cancel">Close</button>
+          <button id="tool-run" value="run" class="primary">Run tool</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <script src="/static/app.js" type="module"></script>
+  </body>
+</html>
