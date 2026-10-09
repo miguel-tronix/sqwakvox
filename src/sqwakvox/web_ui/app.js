@@ -411,40 +411,42 @@ function scheduleRefresh() {
 
 async function handleEvent(kind, payload) {
   if (payload?.seq) state.lastSeq = Math.max(state.lastSeq, payload.seq);
+  const data = payload?.data || payload || {};
   switch (kind) {
     case "hello":
-      state.session = payload.session;
+      state.session = payload.session || data.session;
+      if (state.session?.seq) state.lastSeq = Math.max(state.lastSeq, state.session.seq);
       renderDocuments();
       renderPager();
       await Promise.all([renderDocument(), renderChat()]);
       break;
     case "progress":
     case "log":
-      addPendingMessage(payload.message);
+      addPendingMessage(data.message);
       break;
     case "error":
       state.pendingChat = Math.max(0, state.pendingChat - 1);
-      addPendingMessage(`✗ ${payload.message}`);
-      toast(payload.message, true);
-      setStatus(`error: ${payload.message}`);
+      addPendingMessage(`✗ ${data.message}`);
+      toast(data.message, true);
+      setStatus(`error: ${data.message}`);
       break;
     case "job":
-      handleJobEvent(payload.job);
+      handleJobEvent(data.job);
       break;
     case "document":
       scheduleRefresh();
-      if (payload.document?.some((d) => d.source === state.activeSource)) await renderDocument();
+      if (data.document?.some((d) => d.source === state.activeSource)) await renderDocument();
       break;
     case "render":
       renderPager();
       await renderDocument();
       break;
     case "chat":
-      if (payload.cleared) await renderChat();
-      else if (payload.message) {
+      if (data.cleared) await renderChat();
+      else if (data.message) {
         state.pendingChat = Math.max(0, state.pendingChat - 1);
         $("chat-log").querySelectorAll(".msg.pending").forEach((n) => n.remove());
-        appendMessage(payload.message);
+        appendMessage(data.message);
       }
       break;
     default:
@@ -534,6 +536,59 @@ function wireEvents() {
     sessionStorage.setItem("sqwakvox_token", state.token);
     boot();
   };
+
+  const uploadFile = async (file) => {
+    if (!file) return;
+    setStatus(`uploading ${file.name}…`);
+    const formData = new FormData();
+    formData.append("file", file);
+    try {
+      const response = await fetch("/api/upload", {
+        method: "POST",
+        headers: headers(false),
+        body: formData,
+      });
+      const data = await response.json().catch(() => ({}));
+      if (response.status === 401) {
+        showGate("Token rejected. Try again.");
+        return;
+      }
+      if (data.ok && data.path) {
+        $("source").value = data.path;
+        setStatus(`selected ${data.file_name}`);
+        toast(`Selected ${data.file_name}`);
+      } else {
+        toast(data.error || "File upload failed", true);
+        setStatus("upload failed");
+      }
+    } catch (error) {
+      toast(`Upload error: ${error.message}`, true);
+      setStatus("upload error");
+    } finally {
+      const fileInput = $("file-input");
+      if (fileInput) fileInput.value = "";
+    }
+  };
+
+  const btnBrowse = $("btn-browse");
+  const fileInput = $("file-input");
+  if (btnBrowse && fileInput) {
+    btnBrowse.onclick = () => fileInput.click();
+    fileInput.onchange = () => {
+      const file = fileInput.files?.[0];
+      if (file) uploadFile(file);
+    };
+  }
+
+  const sourceInput = $("source");
+  if (sourceInput) {
+    sourceInput.addEventListener("dragover", (event) => event.preventDefault());
+    sourceInput.addEventListener("drop", (event) => {
+      event.preventDefault();
+      const file = event.dataTransfer?.files?.[0];
+      if (file) uploadFile(file);
+    });
+  }
 
   $("btn-open").onclick = openDocument;
   $("btn-cancel").onclick = async () => {

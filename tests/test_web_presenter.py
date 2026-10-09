@@ -115,7 +115,38 @@ def test_a_token_is_required_when_configured(session: DocSession) -> None:
         )
         # SSE accepts the token as a query parameter (EventSource cannot set headers).
         assert client.get("/api/events", params={"token": "wrong"}).status_code == 401
+        assert (
+            client.post("/api/upload", files={"file": ("report.pdf", b"pdf data")}).status_code
+            == 401
+        )
+        assert (
+            client.post(
+                "/api/upload",
+                files={"file": ("report.pdf", b"pdf data")},
+                headers={"Authorization": "Bearer secret"},
+            ).status_code
+            == 200
+        )
         assert client.get("/healthz").status_code == 200  # probe stays open
+
+
+def test_upload_file_succeeds(client: Any) -> None:
+    response = client.post(
+        "/api/upload",
+        files={"file": ("annual_report.pdf", b"%PDF-1.4 dummy content")},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is True
+    assert body["file_name"] == "annual_report.pdf"
+    target_path = Path(body["path"])
+    assert target_path.is_file()
+    assert target_path.read_bytes() == b"%PDF-1.4 dummy content"
+
+
+def test_upload_without_file_fails(client: Any) -> None:
+    assert client.post("/api/upload", data={"other": "value"}).status_code == 400
+
 
 
 def test_non_local_hosts_are_refused(session: DocSession) -> None:
@@ -123,6 +154,20 @@ def test_non_local_hosts_are_refused(session: DocSession) -> None:
     with TestClient(presenter.app) as client:
         assert client.get("/healthz", headers={"Host": "attacker.example"}).status_code == 403
         assert client.get("/healthz", headers={"Host": "127.0.0.1:8760"}).status_code == 200
+        assert client.get("/healthz", headers={"Host": "localhost:8760"}).status_code == 200
+        assert client.get("/healthz", headers={"Host": "[::1]:8760"}).status_code == 200
+        assert client.get("/healthz", headers={"Host": "[::1]"}).status_code == 200
+        assert client.get("/healthz", headers={"Host": ""}).status_code == 403
+
+
+def test_lifespan_closes_session() -> None:
+    test_session = DocSession(presenter=FakePresenter())
+    presenter = WebPresenter(session=test_session, allow_remote=True)
+    assert not test_session._closed
+    with TestClient(presenter.app):
+        assert not test_session._closed
+    assert test_session._closed
+
 
 
 # --------------------------------------------------------------------- events

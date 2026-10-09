@@ -3790,8 +3790,11 @@ dependencies = [
     { name = "pypdfium2" },
     { name = "pytest" },
     { name = "pytest-cov" },
+    { name = "python-multipart" },
     { name = "redis" },
+    { name = "starlette" },
     { name = "textual" },
+    { name = "uvicorn" },
 ]
 
 [package.dev-dependencies]
@@ -3826,8 +3829,11 @@ requires-dist = [
     { name = "pypdfium2", specifier = ">=4.0.0" },
     { name = "pytest", specifier = ">=9.0.3" },
     { name = "pytest-cov", specifier = ">=7.1.0" },
+    { name = "python-multipart", specifier = ">=0.0.9" },
     { name = "redis", specifier = ">=5.0.0" },
+    { name = "starlette", specifier = ">=1.0.0" },
     { name = "textual", specifier = ">=0.50.0" },
+    { name = "uvicorn", specifier = ">=0.34.0" },
 ]
 
 [package.metadata.requires-dev]
