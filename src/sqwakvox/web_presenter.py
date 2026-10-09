@@ -44,6 +44,7 @@ from pathlib import Path
 from typing import Any
 
 from starlette.applications import Starlette
+from starlette.datastructures import UploadFile
 from starlette.middleware import Middleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -197,6 +198,35 @@ class WebPresenter:
             result = await _offload(self.call_tool(name, arguments))
             return JSONResponse(result)
 
+        async def api_upload(request: Request) -> Response:
+            if not self.authorized(request):
+                return self._forbidden()
+            try:
+                form = await request.form()
+            except Exception as exc:
+                return JSONResponse(
+                    {"ok": False, "error": f"Invalid form data: {exc}"}, status_code=400
+                )
+            upload = form.get("file")
+            if not isinstance(upload, UploadFile) or not upload.filename:
+                return JSONResponse({"ok": False, "error": "No file uploaded."}, status_code=400)
+            filename = Path(upload.filename).name
+            if not filename:
+                return JSONResponse({"ok": False, "error": "Invalid filename."}, status_code=400)
+            uploads_dir = Path.home() / ".sqwakvox" / "uploads"
+            uploads_dir.mkdir(parents=True, exist_ok=True)
+            target = uploads_dir / filename
+            try:
+                with target.open("wb") as fh:
+                    while chunk := await upload.read(1024 * 1024):
+                        fh.write(chunk)
+            except Exception as exc:
+                logger.error("Failed to write uploaded file %s: %s", target, exc, exc_info=True)
+                return JSONResponse(
+                    {"ok": False, "error": f"Failed to save file: {exc}"}, status_code=500
+                )
+            return JSONResponse({"ok": True, "path": str(target.resolve()), "file_name": filename})
+
         async def api_events(request: Request) -> Response:
             if not self.authorized(request):
                 return self._forbidden()
@@ -216,6 +246,7 @@ class WebPresenter:
             Route("/healthz", healthz),
             Route("/api/tools", api_tools),
             Route("/api/call", api_call, methods=["POST"]),
+            Route("/api/upload", api_upload, methods=["POST"]),
             Route("/api/events", api_events),
         ]
         if self.static_dir.is_dir():
@@ -230,6 +261,8 @@ class WebPresenter:
             # keep pointing at a session this view has stopped driving.
             with contextlib.suppress(Exception):
                 self.session.publish_session_clear()
+            with contextlib.suppress(Exception):
+                self.session.close()
 
         middleware: list[Middleware] = []
         if not self.allow_remote:
@@ -238,8 +271,13 @@ class WebPresenter:
 
     async def _host_guard(self, request: Request, call_next: Any) -> Any:
         """Reject non-local ``Host`` headers (DNS-rebinding protection)."""
-        host = request.headers.get("host", "").split(":")[0].strip()
-        if host and host not in LOCAL_HOSTS:
+        raw_host = request.headers.get("host", "").strip()
+        if raw_host.startswith("["):
+            end = raw_host.find("]")
+            host = raw_host[: end + 1] if end != -1 else raw_host
+        else:
+            host = raw_host.split(":")[0].strip()
+        if not host or host not in LOCAL_HOSTS:
             return JSONResponse(
                 {"ok": False, "error": "Host not allowed (use localhost, or --allow-remote)."},
                 status_code=403,

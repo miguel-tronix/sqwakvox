@@ -21,10 +21,14 @@
       <aside class="sidebar">
         <h1 class="brand">SQWAKVOX <span class="brand-sub">web presenter</span></h1>
 
-        <label class="field">
+        <div class="field">
           <span>Document source</span>
-          <input id="source" type="text" placeholder="report.pdf, book.epub, https://docs.site" />
-        </label>
+          <div class="source-row">
+            <input id="source" type="text" placeholder="report.pdf, book.epub, https://docs.site" />
+            <button id="btn-browse" type="button" class="btn-browse" title="Select a file from your computer">Browse…</button>
+            <input id="file-input" type="file" accept=".pdf,.epub,.md,.markdown,.txt" class="hidden" />
+          </div>
+        </div>
 
         <div class="row">
           <label class="field grow">

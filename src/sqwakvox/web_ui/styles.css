@@ -77,6 +77,9 @@ html, body {
 .field em { font-style: normal; color: var(--accent-2); }
 .field.check { display: flex; align-items: center; gap: 6px; align-self: end; padding-bottom: 6px; }
 .row { display: flex; gap: 8px; }
+.source-row { display: flex; gap: 6px; }
+.source-row input[type="text"] { flex: 1; min-width: 0; }
+.btn-browse { white-space: nowrap; padding: 7px 10px; font-size: 12px; }
 
 input[type="text"], input[type="password"], select, textarea {
   background: var(--panel-2);
@@ -128,7 +131,15 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 .mcp-list li .dot { color: var(--accent-2); }
 
 /* -------------------------------------------------------------- center --- */
-.center { display: flex; flex-direction: column; min-width: 0; background: var(--bg); }
+.center {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+}
 
 .tabs {
   display: flex;
@@ -160,7 +171,9 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 .pager { color: var(--muted); font-size: 12px; display: flex; gap: 8px; align-items: center; }
 
 .document-view, .agent-view {
-  flex: 1;
+  flex: 1 1 0;
+  min-height: 0;
+  height: 0;
   margin: 0;
   padding: 14px 16px;
   overflow: auto;
@@ -176,7 +189,8 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 .chat-tools button { font-size: 11px; padding: 4px 8px; }
 
 .chat-log {
-  flex: 1;
+  flex: 1 1 0;
+  min-height: 0;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
