@@ -17,8 +17,9 @@ from __future__ import annotations
 import logging
 import os
 import sys
-from types import SimpleNamespace
 from typing import Any
+
+from fastmcp.server.auth import AccessToken, TokenVerifier
 
 logger = logging.getLogger(__name__)
 
@@ -26,25 +27,23 @@ ENV_ALLOW = "SQWAKVOX_MCP_ALLOW_HTTP"
 ENV_TOKEN = "SQWAKVOX_MCP_HTTP_TOKEN"
 
 
-class _BearerTokenVerifier:
-    """Minimal static-token verifier compatible with FastMCP's auth hook."""
+class _BearerTokenVerifier(TokenVerifier):
+    """Static bearer-token verifier for the sibling MCP servers.
+
+    Subclasses FastMCP's :class:`~fastmcp.server.auth.TokenVerifier` (the
+    ``AuthProvider`` fastmcp 3.x builds its auth middleware from) and accepts
+    only the exact shared token, compared in constant time.
+    """
 
     def __init__(self, token: str) -> None:
+        super().__init__()
         self._token = token
-        self.required_scopes: list[str] = []
 
-    @property
-    def scopes_supported(self) -> list[str]:
-        return []
-
-    def set_mcp_path(self, path: Any) -> None:  # pragma: no cover - API shim
-        self._mcp_path = path
-
-    async def verify_token(self, token: str) -> SimpleNamespace | None:
+    async def verify_token(self, token: str) -> AccessToken | None:
         import hmac
 
         if token and hmac.compare_digest(token, self._token):
-            return SimpleNamespace(
+            return AccessToken(
                 token=token,
                 client_id="sqwakvox-mcp",
                 scopes=[],
