@@ -15,6 +15,7 @@ const state = {
   documents: [],
   skills: [],
   activeSource: null,
+  renderedSource: undefined,
   currentJob: null,
   lastSeq: 0,
   pendingChat: 0,
@@ -173,10 +174,15 @@ async function refreshSession() {
   const data = await callTool("sqwakvox_presenter_status");
   state.session = data.session;
   state.documents = data.session.documents || [];
-  state.activeSource = data.session.active_source;
+  if (data.session.active_source || !state.activeSource) {
+    state.activeSource = data.session.active_source;
+  }
   renderDocuments();
   renderMcpServers(data.session.mcp_servers || []);
   renderPager();
+  if (state.activeSource !== state.renderedSource) {
+    await Promise.all([renderDocument(state.activeSource), renderChat(state.activeSource)]);
+  }
 }
 
 /* ------------------------------------------------------------ documents --- */
@@ -186,12 +192,14 @@ function renderDocuments() {
   list.replaceChildren();
   if (!state.documents.length) {
     list.append(el("li", { textContent: "No documents loaded." }));
+    renderTabs();
     return;
   }
   for (const doc of state.documents) {
+    const isActive = state.activeSource ? doc.source === state.activeSource : Boolean(doc.active);
     const item = el(
       "li",
-      { className: doc.active ? "active" : "", title: doc.source },
+      { className: isActive ? "active" : "", title: doc.source },
       el("span", { textContent: doc.file_name }),
       el("span", {
         className: "meta",
@@ -208,9 +216,10 @@ function renderTabs() {
   const tabs = $("tabs");
   tabs.replaceChildren();
   for (const doc of state.documents) {
+    const isActive = state.activeSource ? doc.source === state.activeSource : Boolean(doc.active);
     const button = el(
       "button",
-      { className: doc.active ? "active" : "", title: doc.source },
+      { className: isActive ? "active" : "", title: doc.source },
       doc.file_name,
     );
     button.onclick = () => activateDocument(doc.source);
@@ -254,7 +263,7 @@ function renderPager() {
   if (!info || !info.paged) {
     setStatus(
       state.documents.length
-        ? `${state.session?.active_document_name || ""} — ${state.session?.context_chars || 0} chars of agent context`
+        ? `${state.session?.active_document_name || doc?.file_name || ""} — ${state.session?.context_chars || 0} chars of agent context`
         : "ready",
     );
     return;
@@ -273,11 +282,19 @@ function renderPager() {
 }
 
 async function activateDocument(source) {
-  if (source === state.activeSource) return;
+  if (!source) return;
+  if (source === state.activeSource && source === state.renderedSource) return;
+  state.activeSource = source;
+  for (const doc of state.documents) {
+    doc.active = doc.source === source;
+  }
+  renderDocuments();
+  renderPager();
   await callTool("sqwakvox_presenter_activate_document", { source }).catch((e) =>
     toast(e.message, true),
   );
-  await Promise.all([refreshSession(), renderDocument(), renderChat()]);
+  await Promise.all([renderDocument(source), renderChat(source)]);
+  await refreshSession().catch(() => {});
 }
 
 async function openDocument() {
@@ -302,30 +319,44 @@ async function openDocument() {
   }
 }
 
-async function renderDocument() {
+async function renderDocument(source = state.activeSource) {
   const view = $("document-view");
-  if (!state.activeSource) {
+  if (!source) {
+    state.renderedSource = null;
     view.textContent = "Load a document to see it rendered here.";
     return;
   }
   try {
-    const data = await callTool("sqwakvox_presenter_document", { source: state.activeSource });
-    view.textContent = data.document.rendered || "(empty document)";
+    const data = await callTool("sqwakvox_presenter_document", { source });
+    if (source === state.activeSource) {
+      state.renderedSource = source;
+      view.textContent = data.document?.rendered || "(empty document)";
+    }
   } catch (error) {
-    view.textContent = `Could not render document: ${error.message}`;
+    if (source === state.activeSource) {
+      state.renderedSource = null;
+      view.textContent = `Could not render document: ${error.message}`;
+    }
   }
 }
 
 /* ----------------------------------------------------------------- chat --- */
 
-function renderChat() {
+function renderChat(source = state.activeSource) {
   const log = $("chat-log");
   log.replaceChildren();
-  if (!state.activeSource) return;
-  return callTool("sqwakvox_presenter_chat", { source: state.activeSource }).then((data) => {
-    for (const message of data.messages || []) appendMessage(message);
-    scrollChat();
-  });
+  const agentView = $("agent-view");
+  if (agentView) agentView.replaceChildren();
+  if (!source) return Promise.resolve();
+  return callTool("sqwakvox_presenter_chat", { source })
+    .then((data) => {
+      if (source !== state.activeSource) return;
+      for (const message of data.messages || []) appendMessage(message);
+      scrollChat();
+    })
+    .catch((error) => {
+      console.warn("Could not load chat:", error);
+    });
 }
 
 function appendMessage(message) {
@@ -405,7 +436,6 @@ function scheduleRefresh() {
   clearTimeout(refreshTimer);
   refreshTimer = setTimeout(async () => {
     await refreshSession().catch(() => {});
-    await renderChat().catch(() => {});
   }, 120);
 }
 
@@ -415,10 +445,14 @@ async function handleEvent(kind, payload) {
   switch (kind) {
     case "hello":
       state.session = payload.session || data.session;
-      if (state.session?.seq) state.lastSeq = Math.max(state.lastSeq, state.session.seq);
+      if (state.session) {
+        state.documents = state.session.documents || [];
+        state.activeSource = state.session.active_source;
+        if (state.session.seq) state.lastSeq = Math.max(state.lastSeq, state.session.seq);
+      }
       renderDocuments();
       renderPager();
-      await Promise.all([renderDocument(), renderChat()]);
+      await Promise.all([renderDocument(state.activeSource), renderChat(state.activeSource)]);
       break;
     case "progress":
     case "log":
@@ -434,15 +468,29 @@ async function handleEvent(kind, payload) {
       handleJobEvent(data.job);
       break;
     case "document":
+      if (Array.isArray(data.document)) {
+        state.documents = data.document;
+        const activeDoc = state.documents.find((d) => d.active);
+        const newActive = activeDoc
+          ? activeDoc.source
+          : (data.event === "closed"
+              ? (state.documents[0]?.source || null)
+              : (state.activeSource || state.documents[0]?.source || null));
+        state.activeSource = newActive;
+        renderDocuments();
+        renderPager();
+        if (state.activeSource !== state.renderedSource) {
+          await Promise.all([renderDocument(state.activeSource), renderChat(state.activeSource)]);
+        }
+      }
       scheduleRefresh();
-      if (data.document?.some((d) => d.source === state.activeSource)) await renderDocument();
       break;
     case "render":
       renderPager();
-      await renderDocument();
+      await renderDocument(state.activeSource);
       break;
     case "chat":
-      if (data.cleared) await renderChat();
+      if (data.cleared) await renderChat(state.activeSource);
       else if (data.message) {
         state.pendingChat = Math.max(0, state.pendingChat - 1);
         $("chat-log").querySelectorAll(".msg.pending").forEach((n) => n.remove());
@@ -582,6 +630,12 @@ function wireEvents() {
 
   const sourceInput = $("source");
   if (sourceInput) {
+    sourceInput.onkeydown = (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        openDocument();
+      }
+    };
     sourceInput.addEventListener("dragover", (event) => event.preventDefault());
     sourceInput.addEventListener("drop", (event) => {
       event.preventDefault();
