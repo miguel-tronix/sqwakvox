@@ -238,6 +238,35 @@ def test_paged_pdf_exposes_page_info_and_loads_more(
     assert session.page_info(str(pdf))["rendered_pages"] > 10
 
 
+def test_seek_page_replaces_the_visible_window(session: DocSession, tmp_path: Path) -> None:
+    pdf = tmp_path / "big.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n")
+
+    session.open_document_and_wait(str(pdf))
+    result = session.seek_page_and_wait(str(pdf), 12)
+    assert result["ok"] is True
+
+    info = session.page_info(str(pdf))
+    assert info["start_page"] == 12
+    assert info["end_page"] == 21
+    assert info["next_start_page"] == 22
+
+    session.load_more_and_wait(str(pdf))
+    info = session.page_info(str(pdf))
+    assert info["start_page"] == 12
+    assert info["end_page"] == 25
+
+
+def test_seek_page_past_the_last_page_is_rejected(session: DocSession, tmp_path: Path) -> None:
+    pdf = tmp_path / "big.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n")
+
+    session.open_document_and_wait(str(pdf))
+    result = session.seek_page_and_wait(str(pdf), 99)
+    assert result["ok"] is False
+    assert "last page" in result["error"]
+
+
 # ---------------------------------------------------------------- chat
 
 

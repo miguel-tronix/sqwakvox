@@ -84,6 +84,18 @@ def test_a_failing_tool_reports_ok_false(client: Any) -> None:
     assert body["data"]["ok"] is False  # the tool did not
 
 
+def test_seek_page_returns_the_requested_window(client: Any, tmp_path: Path) -> None:
+    pdf = tmp_path / "big.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n")
+    opened = _call(client, "sqwakvox_presenter_open_document_sync", source=str(pdf))
+    assert opened["ok"] is True
+
+    payload = _call(client, "sqwakvox_presenter_seek_page", source=str(pdf), page=12)
+    assert payload["ok"] is True
+    assert payload["page_range"]["start_page"] == 12
+    assert payload["page_range"]["end_page"] == 21
+
+
 def test_unknown_tool_is_reported_not_raised(client: Any) -> None:
     body = client.post("/api/call", json={"tool": "nope"}).json()
     assert body["ok"] is False

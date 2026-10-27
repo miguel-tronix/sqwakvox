@@ -492,6 +492,24 @@ class Presenter:
     # ------------------------------------------------------------------ #
     async def close(self) -> None:
         """Cancel all active polls and release resources."""
-        for poll in list(self._active_polls.values()):
-            poll.cancel()
+        polls = list(self._active_polls.values())
         self._active_polls.clear()
+        try:
+            current = asyncio.get_running_loop()
+        except RuntimeError:
+            current = None
+
+        for poll in polls:
+            try:
+                owner = poll.get_loop()
+            except Exception:
+                owner = None
+            if current is not None and owner is current:
+                poll.cancel()
+            else:
+                logger.warning(
+                        "cancelling polling task %s from a dead loop",
+                        getattr(poll,"get_name",lambda: "?")() if hasattr(poll,"get_name") else "?",
+                )
+                with contextlib.suppress(RuntimeError):
+                    poll.cancel()
