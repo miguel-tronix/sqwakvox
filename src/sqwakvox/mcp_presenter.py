@@ -354,6 +354,40 @@ def sqwakvox_presenter_load_more(source: str = "", timeout: float = 600.0) -> st
 
 
 @mcp.tool(
+    name="sqwakvox_presenter_seek_page",
+    description=(
+        "Jump to a page in a large incrementally loaded PDF and render that "
+        "page plus the following pages (default: a 10-page window). Earlier "
+        "pages are replaced in the view, so a 500-page report can be read from "
+        "page 240 without loading pages 1-239. Args: source (optional, defaults "
+        "to the active document), page (1-based), window (pages to fetch, "
+        "default 10), timeout (seconds, default 600)."
+    ),
+    annotations={"readOnlyHint": False, "destructiveHint": False},
+)
+def sqwakvox_presenter_seek_page(
+    source: str = "", page: int = 1, window: int = 10, timeout: float = 600.0
+) -> str:
+    """Render a PDF page window starting at *page* (blocking)."""
+
+    def _run() -> str:
+        try:
+            result = _session().seek_page_and_wait(
+                source.strip() or None,
+                page,
+                window,
+                timeout=_clamp_timeout(timeout),
+            )
+        except (KeyError, ValueError) as exc:
+            return _json({"ok": False, "error": str(exc)})
+        except TimeoutError:
+            return _json({"ok": False, "error": "Timed out seeking to the page."})
+        return _json(result)
+
+    return _trace("sqwakvox_presenter_seek_page", _run)
+
+
+@mcp.tool(
     name="sqwakvox_presenter_cross_validate",
     description=(
         "Run the financial cross-validation rule engine over a document's "

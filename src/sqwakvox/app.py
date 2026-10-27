@@ -51,6 +51,13 @@ chat_logger = logging.getLogger("sqwakvox.chat")
 #: slices are prefetched in the background and shown via "Load more").
 PDF_BATCH_SIZE = int(os.environ.get("SQWAKVOX_PDF_BATCH_SIZE", "10"))
 
+#: Frames per second for the parsing spinner.  Textual's ``LoadingIndicator``
+#: defaults to 16 fps, and each frame forces a full-screen recomposite of the
+#: whole three-column grid, which queued keystrokes behind a repaint (measured
+#: ~386 ms p95 scroll latency while parsing, versus ~116 ms with the animation
+#: stopped).  8 fps still reads as "busy" at one docked line of text.
+SPINNER_FPS = int(os.environ.get("SQWAKVOX_SPINNER_FPS", "8"))
+
 CSS = """
 Screen {
     layout: grid;
@@ -613,6 +620,11 @@ class SqwakvoxApp(App[None]):
         btn_send = self.query_one("#btn-send", Button)
         btn_parse = self.query_one("#btn-parse", Button)
 
+        # LoadingIndicator.on_input() stops and prevents every InputEvent that
+        # reaches it, so a parse in progress swallows keystrokes aimed at the
+        # sidebar. Park the widget offscreen instead of merely hiding it.
+        spinner.styles.display = "none"
+
         # Chat stays available whenever any document is ready, even while
         # another document is still parsing on its own worker.
         is_ready = bool(self.doc_context)
@@ -621,10 +633,15 @@ class SqwakvoxApp(App[None]):
 
         if self.is_parsing:
             status_bar.update("Status: Processing Layout via Docling...")
-            spinner.visible = True
+            spinner.styles.display = "block"
+            spinner.auto_refresh = 1 / SPINNER_FPS
         else:
             status_bar.update("Status: Idle | Ready" if is_ready else "Status: Idle")
-            spinner.visible = False
+            spinner.styles.display = "none"
+            # LoadingIndicator sets auto_refresh on mount and never clears it,
+            # so the 16 fps timer keeps compositing the screen forever even
+            # while hidden. Clearing it drops idle repaints from ~18/s to ~3/s.
+            spinner.auto_refresh = None
         btn_parse.disabled = False
 
     def watch_is_parsing(self, _new_value: bool) -> None:

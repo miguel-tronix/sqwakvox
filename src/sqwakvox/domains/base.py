@@ -163,6 +163,13 @@ class LoadedDocument:
     total_pages: int | None = None
     #: Highest 1-based page currently rendered (``batch_size`` after slice 0).
     rendered_pages: int = 0
+    #: First 1-based page currently rendered.  Sequential loads keep this at 1;
+    #: a page seek moves the window without appending earlier pages.
+    window_start: int = 1
+    #: True once an empty slice proved the end of a document with no page count.
+    paging_complete: bool = False
+    #: Bumped on a seek so in-flight prefetches from the old window stop caching.
+    paging_generation: int = 0
     #: Next slice index to load (0 is the initial parse result).
     next_batch: int = 0
     #: Prefetched slices awaiting display, keyed by slice index.
