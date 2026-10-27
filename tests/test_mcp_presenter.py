@@ -57,6 +57,7 @@ async def test_every_session_operation_is_published(client: Any) -> None:
         "sqwakvox_presenter_close_document",
         "sqwakvox_presenter_document",
         "sqwakvox_presenter_load_more",
+        "sqwakvox_presenter_seek_page",
         "sqwakvox_presenter_cross_validate",
         "sqwakvox_presenter_cross_validate_async",
         "sqwakvox_presenter_data_store",

@@ -21,6 +21,8 @@ const state = {
   pendingChat: 0,
   view: "document",
   eventSource: null,
+  pageInfo: null,
+  chatCollapsed: localStorage.getItem("sqwakvox_chat_collapsed") === "1",
 };
 
 /* ------------------------------------------------------------------ api --- */
@@ -78,6 +80,12 @@ function setStatus(text) {
   $("status-text").textContent = text;
 }
 
+function setChatCollapsed(collapsed) {
+  state.chatCollapsed = Boolean(collapsed);
+  $("app").classList.toggle("chat-collapsed", state.chatCollapsed);
+  localStorage.setItem("sqwakvox_chat_collapsed", state.chatCollapsed ? "1" : "0");
+}
+
 /* ---------------------------------------------------------------- boot --- */
 
 async function boot() {
@@ -93,6 +101,7 @@ async function boot() {
   }
   $("gate").classList.add("hidden");
   $("app").classList.remove("hidden");
+  setChatCollapsed(state.chatCollapsed);
   wireEvents();
   await refreshCatalogs();
   await refreshSession();
@@ -259,7 +268,8 @@ function renderPager() {
   const doc = state.documents.find((d) => d.source === state.activeSource);
   const pager = $("pager");
   pager.replaceChildren();
-  const info = doc?.page_range;
+  const fresh = state.pageInfo?.source === doc?.source ? state.pageInfo : null;
+  const info = fresh || doc?.page_range;
   if (!info || !info.paged) {
     setStatus(
       state.documents.length
@@ -268,17 +278,61 @@ function renderPager() {
     );
     return;
   }
+  const total = info.total_pages;
+  const start = info.start_page ?? 1;
+  const end = info.end_page ?? info.rendered_pages ?? start;
   pager.append(
     el("span", {
-      textContent: info.total_pages
-        ? `pages 1–${info.rendered_pages} of ${info.total_pages}`
-        : `${info.rendered_pages} pages loaded`,
+      textContent: total
+        ? `pages ${start}–${end} of ${total}`
+        : `pages ${start}–${end} loaded`,
     }),
   );
+
+  const form = el("form", { className: "pager-seek" });
+  const input = el("input", {
+    type: "number",
+    min: "1",
+    value: String(start),
+    className: "page-input",
+    title: "Jump to a page; loads that page and the next 9",
+  });
+  if (total) input.max = String(total);
+  const go = el("button", { type: "submit", textContent: "Go", title: "Go to page" });
+  form.append(input, go);
+  form.onsubmit = (event) => {
+    event.preventDefault();
+    seekToPage(doc.source, input.value);
+  };
+  pager.append(form);
+
   const more = el("button", { textContent: info.complete ? "All pages ✓" : "Load more ↓" });
   more.disabled = Boolean(info.complete);
   more.onclick = () => callTool("sqwakvox_presenter_load_more", { source: doc.source }).catch((e) => toast(e.message, true));
   pager.append(more);
+}
+
+async function seekToPage(source, page) {
+  const target = Number.parseInt(page, 10);
+  if (!Number.isFinite(target) || target < 1) {
+    toast("Enter a valid page number", true);
+    return;
+  }
+  const window = 10;
+  setStatus(`loading pages ${target}–${target + window - 1}…`);
+  try {
+    const data = await callTool("sqwakvox_presenter_seek_page", {
+      source,
+      page: target,
+      window,
+    });
+    if (data.page_range) state.pageInfo = { ...data.page_range, source };
+    await renderDocument(source);
+    renderPager();
+  } catch (error) {
+    toast(error.message, true);
+    setStatus("page seek failed");
+  }
 }
 
 async function activateDocument(source) {
@@ -331,6 +385,9 @@ async function renderDocument(source = state.activeSource) {
     if (source === state.activeSource) {
       state.renderedSource = source;
       view.textContent = data.document?.rendered || "(empty document)";
+      const info = data.document?.page_range;
+      state.pageInfo = info ? { ...info, source } : null;
+      renderPager();
     }
   } catch (error) {
     if (source === state.activeSource) {
@@ -486,6 +543,9 @@ async function handleEvent(kind, payload) {
       scheduleRefresh();
       break;
     case "render":
+      if (data.source === state.activeSource && data.page_range) {
+        state.pageInfo = { ...data.page_range, source: data.source };
+      }
       renderPager();
       await renderDocument(state.activeSource);
       break;
@@ -653,6 +713,11 @@ function wireEvents() {
   };
   $("btn-clear-chat").onclick = () =>
     callTool("sqwakvox_presenter_clear_chat", {}).catch((e) => toast(e.message, true));
+  $("btn-collapse-chat").onclick = () => setChatCollapsed(true);
+  $("btn-expand-chat").onclick = () => {
+    setChatCollapsed(false);
+    $("chat-input").focus();
+  };
   $("btn-xvalidate").onclick = async () => {
     if (!state.activeSource) return toast("Load a document first", true);
     addPendingMessage("Cross-validating table numbers…");

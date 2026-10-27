@@ -534,17 +534,17 @@ class DocSession:
         loaded = self.loaded_documents.get(source or self._active_source or "")
         if loaded is None or not loaded.is_paged:
             return {"paged": False}
-        done = False
+        done = loaded.paging_complete
         if loaded.total_pages:
             done = loaded.rendered_pages >= loaded.total_pages
-        else:
-            cached = loaded.batch_cache.get(loaded.next_batch)
-            done = cached is not None and not (cached.raw_markdown or "").strip()
         return {
             "paged": True,
             "batch_size": loaded.batch_size,
+            "start_page": loaded.window_start,
+            "end_page": loaded.rendered_pages,
             "rendered_pages": loaded.rendered_pages,
             "total_pages": loaded.total_pages,
+            "next_start_page": loaded.rendered_pages + 1,
             "next_batch": loaded.next_batch,
             "complete": done,
         }
@@ -850,7 +850,11 @@ class DocSession:
 
         # Keep one PDF slice ahead of what the user has revealed.
         if self.loaded_documents[source].is_paged:
-            self._submit(self._prefetch(source, 1), kind="prefetch", source=source)
+            self._submit(
+                self._prefetch(source, self.loaded_documents[source].rendered_pages + 1),
+                kind="prefetch",
+                source=source,
+            )
 
         return {
             "ok": True,
@@ -866,9 +870,12 @@ class DocSession:
         """Record a parsed document in the tab registry."""
         loaded = LoadedDocument(domain_id=domain_id, structured=doc, source=source)
         if doc.metadata.get("page_range") is not None:
-            loaded.batch_size = int(doc.metadata.get("pages_in_batch") or self.pdf_batch_size)
+            page_range = doc.metadata["page_range"]
+            pages_in_batch = int(doc.metadata.get("pages_in_batch") or self.pdf_batch_size)
+            loaded.batch_size = pages_in_batch
             loaded.total_pages = doc.metadata.get("total_pages")
-            loaded.rendered_pages = loaded.batch_size
+            loaded.window_start = int(page_range[0])
+            loaded.rendered_pages = loaded.window_start + pages_in_batch - 1
             loaded.next_batch = 1
         self.loaded_documents[source] = loaded
         if source not in self.ingestion_history:
@@ -968,25 +975,48 @@ class DocSession:
         job = self.load_more(source)
         return self.wait_job(job.job_id, timeout=timeout)
 
-    async def _prefetch(self, source: str, batch_index: int) -> dict[str, Any]:
-        """Cache PDF slice *batch_index* in the background (one slice ahead)."""
+    def seek_page(self, source: str | None = None, page: int = 1, window: int = 10) -> Job:
+        """Jump to *page* and render it plus the following ``window - 1`` pages."""
+        source = source or self._active_source
+        if source is None:
+            raise ValueError("No active document loaded")
+        return self._submit(self._seek_page(source, page, window), kind="seek_page", source=source)
+
+    def seek_page_and_wait(
+        self,
+        source: str | None = None,
+        page: int = 1,
+        window: int = 10,
+        timeout: float | None = None,
+    ) -> dict[str, Any]:
+        job = self.seek_page(source, page, window)
+        return self.wait_job(job.job_id, timeout=timeout)
+
+    async def _prefetch(self, source: str, start_page: int) -> dict[str, Any]:
+        """Cache the PDF slice starting at *start_page* (one slice ahead)."""
         loaded = self.loaded_documents.get(source)
         if loaded is None or not loaded.is_paged:
             return {"ok": False, "error": "Document is not paged."}
-        if batch_index in loaded.pending or batch_index in loaded.batch_cache:
+        start_page = max(1, int(start_page))
+        if start_page in loaded.pending or start_page in loaded.batch_cache:
             return {"ok": True, "cached": True}
-        if loaded.total_pages and batch_index * loaded.batch_size >= loaded.total_pages:
+        if loaded.total_pages and start_page > loaded.total_pages:
             return {"ok": True, "cached": True}
 
-        start = batch_index * loaded.batch_size + 1
+        start = start_page
         end = start + loaded.batch_size - 1
         if loaded.total_pages:
             end = min(end, loaded.total_pages)
+        generation = loaded.paging_generation
 
         def on_complete(status: TaskStatus, payload: Any) -> None:
+            # A seek moves the window; discard slices from the old one.
+            if generation != loaded.paging_generation:
+                loaded.pending.pop(start, None)
+                return
             if status == TaskStatus.SUCCESS and isinstance(payload, StructuredDocument):
-                loaded.batch_cache[batch_index] = payload
-            loaded.pending.pop(batch_index, None)
+                loaded.batch_cache[start] = payload
+            loaded.pending.pop(start, None)
 
         handle = await self.presenter.parse_document(
             source=source,
@@ -995,48 +1025,115 @@ class DocSession:
             queue=self.docling_queue(),
             on_complete=on_complete,
         )
-        loaded.pending[batch_index] = handle
+        if generation != loaded.paging_generation:
+            return {"ok": True, "stale": True}
+        loaded.pending[start] = handle
         await handle.wait()
-        if batch_index in loaded.batch_cache:
+        loaded.pending.pop(start, None)
+        if generation != loaded.paging_generation:
+            return {"ok": True, "stale": True}
+        if start in loaded.batch_cache:
             # Chain the next prefetch so the cache stays one slice ahead.
-            self._submit(self._prefetch(source, batch_index + 1), kind="prefetch", source=source)
-        return {"ok": True, "batch_index": batch_index, "pages": [start, end]}
+            self._submit(
+                self._prefetch(source, start + loaded.batch_size),
+                kind="prefetch",
+                source=source,
+            )
+        return {"ok": True, "start_page": start, "pages": [start, end]}
 
     async def _load_more(self, source: str) -> dict[str, Any]:
         """Reveal the next prefetched (or freshly fetched) PDF slice."""
         loaded = self.loaded_documents.get(source)
         if loaded is None or not loaded.is_paged:
             return {"ok": False, "error": "Document is not paged."}
+        if loaded.total_pages and loaded.rendered_pages >= loaded.total_pages:
+            loaded.paging_complete = True
+            return {"ok": True, "page_range": self.page_info(source)}
 
-        batch_index = loaded.next_batch
-        if batch_index not in loaded.batch_cache:
-            if batch_index in loaded.pending:
-                await loaded.pending[batch_index].wait()
+        start_page = loaded.rendered_pages + 1
+        if start_page not in loaded.batch_cache:
+            if start_page in loaded.pending:
+                await loaded.pending[start_page].wait()
             else:
-                prefetch = await self._prefetch(source, batch_index)
+                prefetch = await self._prefetch(source, start_page)
                 if not prefetch.get("ok"):
                     return prefetch
 
-        batch = loaded.batch_cache.pop(batch_index, None)
+        batch = loaded.batch_cache.pop(start_page, None)
         if batch is None:
             return {"ok": True, "page_range": self.page_info(source)}
         if not (batch.raw_markdown or "").strip():
-            loaded.next_batch = batch_index + 1
+            loaded.paging_complete = True
             self._emit(EVENT_RENDER, {"source": source, "page_range": self.page_info(source)})
             return {"ok": True, "page_range": self.page_info(source)}
 
+        pages_in_batch = int(batch.metadata.get("pages_in_batch") or loaded.batch_size)
         loaded.structured.raw_markdown += "\n\n" + batch.raw_markdown
         loaded.structured.tables.extend(batch.tables)
-        loaded.rendered_pages += int(batch.metadata.get("pages_in_batch") or loaded.batch_size)
-        loaded.next_batch = batch_index + 1
+        loaded.rendered_pages = start_page + pages_in_batch - 1
+        loaded.next_batch = loaded.rendered_pages // max(1, loaded.batch_size)
 
         if source == self._active_source:
             self.doc_context = get_domain(loaded.domain_id).context_for(loaded.structured)
         self._emit(EVENT_RENDER, {"source": source, "page_range": self.page_info(source)})
         return {
             "ok": True,
-            "pages_added": loaded.rendered_pages,
+            "pages_added": pages_in_batch,
             "page_range": self.page_info(source),
+        }
+
+    async def _seek_page(self, source: str, page: int, window: int) -> dict[str, Any]:
+        """Replace the visible PDF window with the slice starting at *page*."""
+        loaded = self.loaded_documents.get(source)
+        if loaded is None or not loaded.is_paged:
+            return {"ok": False, "error": "Document is not paged."}
+        try:
+            page = int(page)
+            window = int(window)
+        except (TypeError, ValueError):
+            return {"ok": False, "error": "Page and window must be integers."}
+        page = max(1, page)
+        if loaded.total_pages and page > loaded.total_pages:
+            return {
+                "ok": False,
+                "error": f"Page {page} is beyond the last page ({loaded.total_pages}).",
+            }
+        window = max(1, window or loaded.batch_size or self.pdf_batch_size)
+
+        # Drop the old window and stop any prefetch chain still running for it.
+        loaded.paging_generation += 1
+        loaded.pending.clear()
+        loaded.batch_cache.clear()
+        loaded.paging_complete = False
+        loaded.batch_size = window
+
+        prefetch = await self._prefetch(source, page)
+        if not prefetch.get("ok"):
+            return prefetch
+        batch = loaded.batch_cache.pop(page, None)
+        if batch is None:
+            return {"ok": False, "error": f"Could not load page {page}."}
+        if not (batch.raw_markdown or "").strip():
+            loaded.paging_complete = True
+            return {"ok": False, "error": f"No content found at page {page}."}
+
+        pages_in_batch = int(batch.metadata.get("pages_in_batch") or window)
+        loaded.window_start = page
+        loaded.rendered_pages = page + pages_in_batch - 1
+        loaded.next_batch = loaded.rendered_pages // max(1, loaded.batch_size)
+        loaded.structured.raw_markdown = batch.raw_markdown
+        loaded.structured.tables = list(batch.tables)
+
+        if source == self._active_source:
+            self.doc_context = get_domain(loaded.domain_id).context_for(loaded.structured)
+        page_range = self.page_info(source)
+        self._emit(EVENT_RENDER, {"source": source, "page_range": page_range})
+        self._emit(EVENT_DOCUMENT, {"event": "seeked", "document": self.documents()})
+        return {
+            "ok": True,
+            "source": source,
+            "file_name": loaded.file_name,
+            "page_range": page_range,
         }
 
     # ------------------------------------------------------------------ #
