@@ -100,14 +100,14 @@ class TestAgenerate:
 
     @pytest.mark.asyncio
     async def test_forwards_model_id_and_key_to_any_llm(self) -> None:
-        model = build_chat_model("gemini:gemini-3.5-pro", "gem-key")
+        model = build_chat_model("gemini:gemini-3.8-flash", "gem-key")
 
         with patch("any_llm.acompletion", new_callable=AsyncMock) as mock_acompletion:
             mock_acompletion.return_value = _completion("ok")
             await model.agenerate([[SystemMessage(content="s"), HumanMessage(content="h")]])
 
         kwargs = mock_acompletion.call_args.kwargs
-        assert kwargs["model"] == "gemini:gemini-3.5-pro"
+        assert kwargs["model"] == "gemini:gemini-3.8-flash"
         assert kwargs["api_key"] == "gem-key"
         assert kwargs["messages"] == [
             {"role": "system", "content": "s"},

@@ -125,8 +125,10 @@ def test_extract_response_nested_chart_dict() -> None:
 
 def test_model_provider_supports_system_role() -> None:
     assert ModelProvider.supports_system_role("gemini:gemini-3.6-flash") is False
-    assert ModelProvider.supports_system_role("gemini:gemini-3.5-flash") is True
-    assert ModelProvider.supports_system_role("gemini:gemini-3.5-pro") is True
+    assert ModelProvider.supports_system_role("gemini:gemini-3.7-flash") is True
+    assert ModelProvider.supports_system_role("gemini:gemini-3.8-flash") is True
+    assert "gemini:gemini-3.5-flash" not in ModelProvider.MAP
+    assert "gemini:gemini-3.5-pro" not in ModelProvider.MAP
     assert ModelProvider.supports_system_role("openai:gpt-5.5-high") is True
     assert ModelProvider.supports_system_role("unknown:model") is True
 
@@ -153,7 +155,7 @@ def test_render_prompt_standard_model() -> None:
     prompt = "What is the net income?"
 
     instructions, formatted_prompt = AnyAgentOrchestrator.render_prompt(
-        model_id="gemini:gemini-3.5-flash",
+        model_id="gemini:gemini-3.8-flash",
         context=context,
         prompt=prompt,
     )
@@ -188,11 +190,11 @@ def test_execute_query_gemini_36(mock_run: AsyncMock) -> None:
 
 
 @patch.object(AnyAgentOrchestrator, "_run_async")
-def test_execute_query_gemini_35(mock_run: AsyncMock) -> None:
+def test_execute_query_gemini_38(mock_run: AsyncMock) -> None:
     mock_run.return_value = "Test response"
 
     result = AnyAgentOrchestrator.execute_query(
-        model_id="gemini:gemini-3.5-flash",
+        model_id="gemini:gemini-3.8-flash",
         api_key="test-key",
         context="Context payload",
         prompt="User question",
@@ -201,7 +203,7 @@ def test_execute_query_gemini_35(mock_run: AsyncMock) -> None:
 
     assert result == "Test response"
     kwargs = mock_run.call_args.kwargs
-    assert kwargs["model_id"] == "gemini:gemini-3.5-flash"
+    assert kwargs["model_id"] == "gemini:gemini-3.8-flash"
     assert kwargs["instructions"] is not None
     assert "Context payload" in kwargs["instructions"]
     assert kwargs["prompt"] == "User question"
@@ -282,7 +284,7 @@ async def test_run_direct_model_with_instructions() -> None:
     with patch("any_llm.acompletion", new_callable=AsyncMock) as mock_acompletion:
         mock_acompletion.return_value = fake_response
         res = await AnyAgentOrchestrator._run_direct_model(
-            model_id="gemini:gemini-3.5-flash",
+            model_id="gemini:gemini-3.8-flash",
             api_key="test-key",
             instructions="System instructions text",
             prompt="User prompt text",
