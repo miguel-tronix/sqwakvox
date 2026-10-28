@@ -84,9 +84,14 @@ def _patch_gemini_provider() -> None:
         original_convert = gemini_utils._convert_messages
 
         def patched_convert_messages(
-            messages: list[dict[str, Any]], provider_name: str = "gemini"
+            messages: list[dict[str, Any]],
+            provider_name: str = "gemini",
+            *args: Any,
+            **kwargs: Any,
         ) -> tuple[list[Any], str | None]:
-            formatted_messages, system_instruction = original_convert(messages, provider_name)
+            formatted_messages, system_instruction = original_convert(
+                messages, provider_name, *args, **kwargs
+            )
             for msg in formatted_messages:
                 if getattr(msg, "role", None) == "function":
                     msg.role = "user"
