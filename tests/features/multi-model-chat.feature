@@ -48,6 +48,7 @@ Feature: Multi-Provider LLM Agent Execution and Chat
       | model_id                  | env_var           | supports_system_role |
       | openai:gpt-5.5-high       | OPENAI_API_KEY    | True                 |
       | anthropic:claude-4.6      | ANTHROPIC_API_KEY | True                 |
+      | gemini:gemini-3.8-flash   | GEMINI_API_KEY    | True                 |
+      | gemini:gemini-3.7-flash   | GEMINI_API_KEY    | True                 |
       | gemini:gemini-3.6-flash   | GEMINI_API_KEY    | False                |
-      | gemini:gemini-3.5-pro     | GEMINI_API_KEY    | True                 |
       | deepseek:deepseek-v4-flash| DEEPSEEK_API_KEY  | True                 |

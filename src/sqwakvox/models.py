@@ -31,20 +31,20 @@ class ModelProvider:
             "friendly_name": "Anthropic Claude 4.6",
             "supports_system_role": True,
         },
+        "gemini:gemini-3.8-flash": {
+            "env_var": "GEMINI_API_KEY",
+            "friendly_name": "Google Gemini 3.8 Flash",
+            "supports_system_role": True,
+        },
+        "gemini:gemini-3.7-flash": {
+            "env_var": "GEMINI_API_KEY",
+            "friendly_name": "Google Gemini 3.7 Flash",
+            "supports_system_role": True,
+        },
         "gemini:gemini-3.6-flash": {
             "env_var": "GEMINI_API_KEY",
             "friendly_name": "Google Gemini 3.6 Flash",
             "supports_system_role": False,
-        },
-        "gemini:gemini-3.5-flash": {
-            "env_var": "GEMINI_API_KEY",
-            "friendly_name": "Google Gemini 3.5 Flash",
-            "supports_system_role": True,
-        },
-        "gemini:gemini-3.5-pro": {
-            "env_var": "GEMINI_API_KEY",
-            "friendly_name": "Google Gemini 3.5 Pro",
-            "supports_system_role": True,
         },
         "deepseek:deepseek-v4-flash": {
             "env_var": "DEEPSEEK_API_KEY",
@@ -83,7 +83,7 @@ class ModelProvider:
         for alt_var, alt_model in (
             ("OPENAI_API_KEY", "openai:gpt-5.5-high"),
             ("ANTHROPIC_API_KEY", "anthropic:claude-4.6"),
-            ("GEMINI_API_KEY", "gemini:gemini-3.5-flash"),
+            ("GEMINI_API_KEY", "gemini:gemini-3.8-flash"),
         ):
             val = os.environ.get(alt_var, "").strip()
             if val:

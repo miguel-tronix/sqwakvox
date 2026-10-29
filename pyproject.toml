@@ -26,11 +26,11 @@ dependencies = [
     "jinja2>=3.1.0",
     # any-llm provides one `"provider:model"` interface over every LLM
     # provider (see src/sqwakvox/llm.py). any-guardrail also requires it.
-    "any-llm-sdk>=1.15.0",
+    "any-llm-sdk>=1.40.2",
     "langchain-core>=1.0.0",
     "langgraph>=1.0.0",
     "langchain-mcp-adapters>=0.2.2",
-    "google-genai>=2.6.0",
+    "google-genai>=2.33.0",
     # fastmcp 3.x requires mcp<2.0 (its server imports McpError from
     # mcp.shared.exceptions, removed in mcp 2.0.0). Keep the upper bound so a
     # resolver can never pull in an incompatible mcp 2.x again.
