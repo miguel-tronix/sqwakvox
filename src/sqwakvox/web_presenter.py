@@ -413,7 +413,7 @@ def main() -> None:
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     token = "" if args.no_token else os.environ.get("SQWAKVOX_WEB_TOKEN", "").strip()
-    if not token and args.host not in ("127.0.0.1", "localhost"):
+    if not token and not args.no_token and args.host not in ("127.0.0.1", "localhost"):
         # Bind a strong token rather than exposing an open API on 0.0.0.0.
         token = secrets.token_urlsafe(32)
         logger.warning("SQWAKVOX_WEB_TOKEN is unset; generated API token: %s", token)
