@@ -244,6 +244,7 @@ class WebPresenter:
         routes: list[BaseRoute] = [
             Route("/", home),
             Route("/healthz", healthz),
+            Route("/api/health", healthz),
             Route("/api/tools", api_tools),
             Route("/api/call", api_call, methods=["POST"]),
             Route("/api/upload", api_upload, methods=["POST"]),

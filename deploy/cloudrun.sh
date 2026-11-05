@@ -140,7 +140,7 @@ cmd_up() {
     local env_arg=()
     if [[ ${#env_vars[@]} -gt 0 ]]; then
         local IFS=","
-        env_arg=("--set-env-vars" "${env_vars[*]}")
+        env_arg=("--update-env-vars" "${env_vars[*]}")
     fi
 
     echo "==> Deploying '${SERVICE_NAME}' to Cloud Run (${REGION}) in DEMO ON mode..."

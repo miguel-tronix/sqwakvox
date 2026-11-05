@@ -90,7 +90,11 @@ function setChatCollapsed(collapsed) {
 
 async function boot() {
   try {
-    const health = await (await fetch("/healthz", { headers: headers() })).json();
+    const health = await (await fetch("/api/health", { headers: headers() })).json();
+    if (!health.auth_required && state.token) {
+      state.token = "";
+      sessionStorage.removeItem("sqwakvox_token");
+    }
     if (health.auth_required && !state.token) {
       showGate();
       return;
