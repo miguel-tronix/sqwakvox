@@ -6,7 +6,8 @@
 #   ./deploy/cloudrun.sh local        # Run container locally on http://127.0.0.1:8760
 #   ./deploy/cloudrun.sh push         # Push local Podman image to GCP Artifact Registry
 #   ./deploy/cloudrun.sh cloud-build  # Build & push image remotely via Google Cloud Build (saves local disk/bandwidth)
-#   ./deploy/cloudrun.sh up           # Deploy / enable service on Cloud Run (demo ON)
+#   ./deploy/cloudrun.sh up           # Deploy / enable service on Cloud Run (demo ON); ensures telemetry bucket
+#                                      # and sets SQWAKVOX_TELEMETRY_BUCKET so JSONL spans upload to GCS
 #   ./deploy/cloudrun.sh proxy        # Open authenticated tunnel at http://127.0.0.1:8760
 #   ./deploy/cloudrun.sh off          # Throttle CPU & scale to 0 between demos ($0 idle)
 #   ./deploy/cloudrun.sh down         # Delete Cloud Run service completely (keeps image)
@@ -28,6 +29,8 @@ AR_REPO="${GCP_AR_REPO:-sqwakvox}"
 IMAGE_NAME="sqwakvox-web"
 LOCAL_TAG="${IMAGE_NAME}:latest"
 LOCAL_PORT="${LOCAL_PORT:-8760}"
+TELEMETRY_BUCKET="${SQWAKVOX_TELEMETRY_BUCKET:-nutriteasy-sqwakvox-telemetry}"
+TELEMETRY_PREFIX="${SQWAKVOX_TELEMETRY_PREFIX:-telemetry/spans}"
 
 get_project_id() {
     local proj="${GCP_PROJECT_ID:-}"
@@ -80,7 +83,7 @@ cmd_build() {
 cmd_local() {
     echo "==> Running ${LOCAL_TAG} locally at http://127.0.0.1:${LOCAL_PORT} ..."
     local env_flags=()
-    for var in GEMINI_API_KEY OPENAI_API_KEY ANTHROPIC_API_KEY DEEPSEEK_API_KEY SQWAKVOX_WEB_TOKEN; do
+    for var in GEMINI_API_KEY OPENAI_API_KEY ANTHROPIC_API_KEY DEEPSEEK_API_KEY SQWAKVOX_WEB_TOKEN SQWAKVOX_TELEMETRY_BUCKET SQWAKVOX_TELEMETRY_PREFIX SQWAKVOX_TELEMETRY_EXPORTER; do
         if [[ -n "${!var:-}" ]]; then
             env_flags+=("-e" "${var}=${!var}")
         fi
@@ -126,12 +129,47 @@ cmd_cloud_build() {
     echo "==> Built and pushed ${image_uri}"
 }
 
+ensure_telemetry_bucket() {
+    local proj="$1"
+    echo "==> Ensuring telemetry bucket gs://${TELEMETRY_BUCKET} exists in project '${proj}'..."
+    gcloud services enable storage.googleapis.com --project="${proj}" >/dev/null
+
+    if ! gcloud storage buckets describe "gs://${TELEMETRY_BUCKET}" --project="${proj}" >/dev/null 2>&1; then
+        echo "==> Creating bucket '${TELEMETRY_BUCKET}' in ${REGION}..."
+        gcloud storage buckets create "gs://${TELEMETRY_BUCKET}" \
+            --project="${proj}" \
+            --location="${REGION}" \
+            --uniform-bucket-level-access \
+            --public-access-prevention
+    fi
+
+    # Cloud Run runs as the default compute service account; grant it write-only
+    # access so telemetry can be uploaded but not read or deleted by the app.
+    local project_number compute_sa
+    project_number="$(gcloud projects describe "${proj}" --format='value(projectNumber)')"
+    compute_sa="${project_number}-compute@developer.gserviceaccount.com"
+    gcloud storage buckets add-iam-policy-binding "gs://${TELEMETRY_BUCKET}" \
+        --member="serviceAccount:${compute_sa}" \
+        --role=roles/storage.objectCreator >/dev/null
+}
+
 cmd_up() {
-    local proj image_uri env_vars=()
+    local proj image_uri env_vars=(
+        "SQWAKVOX_DOCLING_CONCURRENCY=1"
+        "SQWAKVOX_DOC_WORKER_CONCURRENCY=1"
+        "OMP_NUM_THREADS=2"
+        "MKL_NUM_THREADS=2"
+        "SQWAKVOX_TELEMETRY_BUCKET=${TELEMETRY_BUCKET}"
+        "SQWAKVOX_TELEMETRY_PREFIX=${TELEMETRY_PREFIX}"
+    )
     proj="$(get_project_id)"
     image_uri="$(remote_image_uri)"
 
-    for var in GEMINI_API_KEY OPENAI_API_KEY ANTHROPIC_API_KEY DEEPSEEK_API_KEY SQWAKVOX_WEB_TOKEN; do
+    ensure_telemetry_bucket "${proj}"
+
+    # TELEMETRY_BUCKET/PREFIX are already pinned in env_vars above; only
+    # forward opt-in extras from the caller's environment.
+    for var in GEMINI_API_KEY OPENAI_API_KEY ANTHROPIC_API_KEY DEEPSEEK_API_KEY SQWAKVOX_WEB_TOKEN SQWAKVOX_TELEMETRY_EXPORTER; do
         if [[ -n "${!var:-}" ]]; then
             env_vars+=("${var}=${!var}")
         fi
@@ -152,10 +190,10 @@ cmd_up() {
         --execution-environment=gen2 \
         --no-allow-unauthenticated \
         --max-instances=1 \
-        --min-instances=0 \
+        --min-instances="${SQWAKVOX_MIN_INSTANCES:-1}" \
         --no-cpu-throttling \
-        --cpu=2 \
-        --memory=4Gi \
+        --cpu="${SQWAKVOX_CPU:-4}" \
+        --memory="${SQWAKVOX_MEMORY:-8Gi}" \
         --timeout=3600 \
         --session-affinity \
         "${env_arg[@]}"

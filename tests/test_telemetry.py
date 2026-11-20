@@ -1,4 +1,6 @@
 import json
+import sys
+import types
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -7,6 +9,7 @@ from sqwakvox.guardrails import AnyGuardrailValidator, FinancialRuleEngine, PIIR
 from sqwakvox.mcp_calc_server import calculator, compound_interest, stats_summary
 from sqwakvox.models import StructuredDocument, TableData
 from sqwakvox.telemetry import (
+    GCSJSONLSpanExporter,
     JSONFileSpanExporter,
     instrument_function,
     setup_telemetry,
@@ -42,6 +45,114 @@ def test_instrument_function_decorator() -> None:
 
     result = add_numbers(3, 4)
     assert result == 7
+
+
+def _mock_span() -> MagicMock:
+    span = MagicMock()
+    span.name = "gcs_span"
+    span.context.trace_id = 12345
+    span.context.span_id = 67890
+    span.parent = None
+    span.start_time = 1000
+    span.end_time = 2000
+    span.attributes = {"key": "value"}
+    span.status.status_code.name = "OK"
+    return span
+
+
+def test_gcs_jsonl_span_exporter_uploads_batch(monkeypatch) -> None:
+    uploaded: dict[str, str] = {}
+
+    class FakeBlob:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+        def upload_from_string(self, data: str, content_type: str | None = None) -> None:
+            uploaded[self.name] = data
+
+    class FakeBucket:
+        def blob(self, name: str) -> FakeBlob:
+            return FakeBlob(name)
+
+    class FakeClient:
+        def bucket(self, name: str) -> FakeBucket:
+            assert name == "test-bucket"
+            return FakeBucket()
+
+    fake_storage = types.ModuleType("google.cloud.storage")
+    fake_storage.Client = FakeClient
+    fake_google = types.ModuleType("google")
+    fake_cloud = types.ModuleType("google.cloud")
+    fake_cloud.storage = fake_storage
+    fake_google.cloud = fake_cloud
+    monkeypatch.setitem(sys.modules, "google", fake_google)
+    monkeypatch.setitem(sys.modules, "google.cloud", fake_cloud)
+    monkeypatch.setitem(sys.modules, "google.cloud.storage", fake_storage)
+
+    exporter = GCSJSONLSpanExporter(bucket="test-bucket", prefix="telemetry/spans/")
+    res = exporter.export([_mock_span()])
+
+    assert res.name == "SUCCESS"
+    assert len(uploaded) == 1
+    blob_name, payload = next(iter(uploaded.items()))
+    assert blob_name.startswith("telemetry/spans/")
+    assert blob_name.endswith(".jsonl")
+    lines = [json.loads(line) for line in payload.splitlines() if line.strip()]
+    assert lines[0]["name"] == "gcs_span"
+    assert lines[0]["attributes"]["key"] == "value"
+
+
+def test_gcs_jsonl_span_exporter_failure_handling(monkeypatch) -> None:
+    class BrokenBucket:
+        def blob(self, name: str):
+            raise RuntimeError("boom")
+
+    class BrokenClient:
+        def bucket(self, name: str):
+            return BrokenBucket()
+
+    fake_storage = types.ModuleType("google.cloud.storage")
+    fake_storage.Client = BrokenClient
+    fake_google = types.ModuleType("google")
+    fake_cloud = types.ModuleType("google.cloud")
+    fake_cloud.storage = fake_storage
+    fake_google.cloud = fake_cloud
+    monkeypatch.setitem(sys.modules, "google", fake_google)
+    monkeypatch.setitem(sys.modules, "google.cloud", fake_cloud)
+    monkeypatch.setitem(sys.modules, "google.cloud.storage", fake_storage)
+
+    exporter = GCSJSONLSpanExporter(bucket="test-bucket")
+    res = exporter.export([_mock_span()])
+    assert res.name == "FAILURE"
+
+
+def test_setup_telemetry_prefers_gcs_when_bucket_set(monkeypatch, tmp_path: Path) -> None:
+    created: dict[str, str] = {}
+
+    class FakeGCSExporter:
+        def __init__(self, bucket: str, prefix: str = "telemetry/spans") -> None:
+            created["bucket"] = bucket
+            created["prefix"] = prefix
+
+        def export(self, spans):  # noqa: ANN001, ANN201
+            from opentelemetry.sdk.trace.export import SpanExportResult
+
+            return SpanExportResult.SUCCESS
+
+        def shutdown(self) -> None:
+            pass
+
+    monkeypatch.setattr("sqwakvox.telemetry.GCSJSONLSpanExporter", FakeGCSExporter)
+    monkeypatch.setenv("SQWAKVOX_TELEMETRY_BUCKET", "env-bucket")
+    monkeypatch.setenv("SQWAKVOX_TELEMETRY_PREFIX", "custom/prefix")
+    monkeypatch.delenv("SQWAKVOX_TELEMETRY_EXPORTER", raising=False)
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", raising=False)
+
+    tm = setup_telemetry(file_path=tmp_path / "unused.jsonl", force=True)
+    assert tm.is_enabled is True
+    assert created == {"bucket": "env-bucket", "prefix": "custom/prefix"}
+    shutdown_telemetry()
 
 
 def test_json_file_span_exporter_failure_handling(tmp_path: Path) -> None:

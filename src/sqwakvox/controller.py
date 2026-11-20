@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gc
 import json
 import logging
 import re
@@ -339,6 +340,9 @@ class AppController:
                     )
                 else:
                     pages_in_batch = total_pages
+
+                del result
+                gc.collect()
 
                 doc = StructuredDocument(
                     file_name=doc_name,

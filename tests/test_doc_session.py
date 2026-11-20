@@ -388,6 +388,47 @@ def test_a_failed_job_records_its_error(session: DocSession) -> None:
     assert any("docling exploded" in e.data.get("message", "") for e in errors)
 
 
+def test_failed_parse_marks_job_event_as_failure(session: DocSession) -> None:
+    """When parse_document completes with FAILURE, the job event must be 'failure'."""
+
+    async def fail_parse(on_complete: Any = None, **_kw: Any) -> _Handle:
+        err = "Worker exited prematurely: signal 9 (SIGKILL) Job: 0."
+        if on_complete is not None:
+            on_complete(TaskStatus.FAILURE, err)
+        h = _Handle(None, status=TaskStatus.FAILURE)
+        h.error = err
+        return h
+
+    session.presenter.parse_document = fail_parse  # type: ignore[method-assign]
+    result = session.open_document_and_wait("/tmp/report.pdf")
+    assert result["ok"] is False
+    job_events = [e.data["job"] for e in session.events_since() if e.kind == "job"]
+    assert job_events[-1]["state"] == "failure"
+    assert "SIGKILL" in (job_events[-1]["error"] or "")
+
+
+def test_paged_pdf_prefetches_only_one_slice_ahead(
+    session: DocSession, tmp_path: Path
+) -> None:
+    """Opening a paged PDF must prefetch only one slice ahead, not the whole book."""
+    pdf = tmp_path / "book.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n")
+    ranges: list[tuple[int, int] | None] = []
+    orig_parse = session.presenter.parse_document
+
+    async def tracking_parse(*args: Any, **kwargs: Any) -> _Handle:
+        ranges.append(kwargs.get("page_range"))
+        return await orig_parse(*args, **kwargs)
+
+    session.presenter.parse_document = tracking_parse  # type: ignore[method-assign]
+    session.open_document_and_wait(str(pdf))
+    # Drain any background prefetch job queued by _open_document.
+    for j in list(session.jobs()):
+        session.wait_job(j["job_id"])
+
+    assert ranges == [(1, 10), (11, 20)]
+
+
 # --------------------------------------------------------------------- events
 
 

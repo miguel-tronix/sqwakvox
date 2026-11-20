@@ -111,3 +111,11 @@ def test_execute_agent_missing_key_returns_error() -> None:
     assert result.successful()
     assert result.result["success"] is False
     assert "API key" in result.result["error_message"]
+
+
+def test_get_controller_is_cached_singleton() -> None:
+    """_get_controller must reuse one AppController per worker process."""
+    tasks_mod._controller = None
+    first = tasks_mod._get_controller()
+    second = tasks_mod._get_controller()
+    assert first is second

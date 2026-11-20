@@ -50,12 +50,12 @@ DOCLING_QUEUE = "sqwakvox.docling"
 #: Concurrency used for the shared Docling ingest worker.  One document
 #: conversion can run per child process; a small pool lets several tabs
 #: parse in parallel while keeping total Docling model instances bounded.
-DOCLING_WORKER_CONCURRENCY = 2
+DOCLING_WORKER_CONCURRENCY = int(os.environ.get("SQWAKVOX_DOCLING_CONCURRENCY", "2"))
 
 #: Concurrency used for spawned per-document workers.  One document's tasks
 #: are mostly sequential (data store -> cross-validate -> agent), so a small
 #: pool is enough; this keeps total CPU usage sane with many tabs open.
-DOC_WORKER_CONCURRENCY = 2
+DOC_WORKER_CONCURRENCY = int(os.environ.get("SQWAKVOX_DOC_WORKER_CONCURRENCY", "2"))
 
 
 def managed_workers_enabled() -> bool:

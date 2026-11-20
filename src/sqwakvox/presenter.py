@@ -391,6 +391,7 @@ class Presenter:
         deadline = asyncio.get_event_loop().time() + (
             poll_timeout if poll_timeout is not None else DEFAULT_POLL_TIMEOUT
         )
+        started_notified = False
         try:
             while True:
                 if result.ready() or result.state in (
@@ -455,7 +456,8 @@ class Presenter:
                         on_complete(TaskStatus.FAILURE, msg)
                     break
 
-                if on_progress is not None:
+                if on_progress is not None and not started_notified:
+                    started_notified = True
                     on_progress(TaskStatus.STARTED, None)
                 await asyncio.sleep(POLL_INTERVAL)
 

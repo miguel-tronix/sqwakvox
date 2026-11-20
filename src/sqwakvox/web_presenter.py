@@ -235,8 +235,7 @@ class WebPresenter:
                 self._event_stream(since_seq),
                 media_type="text/event-stream",
                 headers={
-                    "Cache-Control": "no-cache",
-                    "Connection": "keep-alive",
+                    "Cache-Control": "no-cache, no-transform",
                     "X-Accel-Buffering": "no",
                 },
             )

@@ -320,7 +320,7 @@ Configure telemetry with environment variables:
 # Enable or disable telemetry (default: true)
 export SQWAKVOX_TELEMETRY_ENABLED=true
 
-# Select exporter: otlp, file, console, or none
+# Select exporter: otlp, file, gcs, console, or none
 export SQWAKVOX_TELEMETRY_EXPORTER=file
 
 # Set path for local JSON lines trace log
@@ -328,6 +328,13 @@ export SQWAKVOX_TELEMETRY_FILE=sqwakvox_telemetry.jsonl
 
 # Set OTLP collector endpoint
 export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4318"
+
+# Upload JSONL spans to a GCS bucket (one object per batch, for Cloud Run
+# deployments without persistent disk). The Cloud Run service account needs
+# roles/storage.objectCreator on the bucket. deploy/cloudrun.sh creates
+# gs://nutriteasy-sqwakvox-telemetry and sets these automatically.
+export SQWAKVOX_TELEMETRY_BUCKET=nutriteasy-sqwakvox-telemetry
+export SQWAKVOX_TELEMETRY_PREFIX=telemetry/spans
 ```
 
 ## Build with UV

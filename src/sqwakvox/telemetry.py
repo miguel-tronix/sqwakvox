@@ -35,6 +35,28 @@ SERVICE_NAME = "sqwakvox"
 SERVICE_VERSION = "0.1.2"
 
 
+def _span_to_dict(span: ReadableSpan) -> dict[str, Any]:
+    return {
+        "name": span.name,
+        "trace_id": f"{span.context.trace_id:032x}",
+        "span_id": f"{span.context.span_id:016x}",
+        "parent_span_id": (f"{span.parent.span_id:016x}" if span.parent else None),
+        "start_time_ns": span.start_time,
+        "end_time_ns": span.end_time,
+        "duration_ms": (
+            (span.end_time - span.start_time) / 1e6
+            if span.end_time and span.start_time
+            else 0.0
+        ),
+        "attributes": dict(span.attributes) if span.attributes else {},
+        "status": span.status.status_code.name,
+    }
+
+
+def _spans_to_jsonl(spans: Sequence[ReadableSpan]) -> str:
+    return "".join(json.dumps(_span_to_dict(span)) + "\n" for span in spans)
+
+
 class JSONFileSpanExporter(SpanExporter):
     """Export OpenTelemetry spans as JSON Lines to a local file.
 
@@ -48,26 +70,47 @@ class JSONFileSpanExporter(SpanExporter):
     def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:
         try:
             with self.file_path.open("a", encoding="utf-8") as f:
-                for span in spans:
-                    span_dict: dict[str, Any] = {
-                        "name": span.name,
-                        "trace_id": f"{span.context.trace_id:032x}",
-                        "span_id": f"{span.context.span_id:016x}",
-                        "parent_span_id": (f"{span.parent.span_id:016x}" if span.parent else None),
-                        "start_time_ns": span.start_time,
-                        "end_time_ns": span.end_time,
-                        "duration_ms": (
-                            (span.end_time - span.start_time) / 1e6
-                            if span.end_time and span.start_time
-                            else 0.0
-                        ),
-                        "attributes": dict(span.attributes) if span.attributes else {},
-                        "status": span.status.status_code.name,
-                    }
-                    f.write(json.dumps(span_dict) + "\n")
+                f.write(_spans_to_jsonl(spans))
             return SpanExportResult.SUCCESS
         except Exception as exc:
             logger.warning("JSONFileSpanExporter failed to export spans: %s", exc)
+            return SpanExportResult.FAILURE
+
+    def shutdown(self) -> None:
+        pass
+
+
+class GCSJSONLSpanExporter(SpanExporter):
+    """Export OpenTelemetry spans as JSON Lines objects to a GCS bucket.
+
+    Cloud Run has no persistent disk, so each export batch is uploaded as a
+    new object named ``<prefix>/<utc-timestamp>-<uuid>.jsonl``. Objects are
+    append-only and race-free across instances; no read-modify-write of a
+    single rolling file is attempted.
+    """
+
+    def __init__(self, bucket: str, prefix: str = "telemetry/spans"):
+        from google.cloud import storage  # lazy import: optional at runtime
+
+        self.bucket_name = bucket
+        self.prefix = prefix.rstrip("/")
+        self._client = storage.Client()
+        self._bucket = self._client.bucket(bucket)
+
+    def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:
+        from datetime import UTC, datetime
+        from uuid import uuid4
+
+        try:
+            stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%f")
+            blob_name = f"{self.prefix}/{stamp}-{uuid4().hex}.jsonl"
+            blob = self._bucket.blob(blob_name)
+            blob.upload_from_string(
+                _spans_to_jsonl(spans), content_type="application/x-ndjson"
+            )
+            return SpanExportResult.SUCCESS
+        except Exception as exc:
+            logger.warning("GCSJSONLSpanExporter failed to export spans: %s", exc)
             return SpanExportResult.FAILURE
 
     def shutdown(self) -> None:
@@ -117,8 +160,14 @@ def setup_telemetry(
 
     Reads environment variables:
       - SQWAKVOX_TELEMETRY_ENABLED (default: 'true')
-      - SQWAKVOX_TELEMETRY_EXPORTER ('otlp', 'file', 'console', 'none')
+      - SQWAKVOX_TELEMETRY_EXPORTER ('otlp', 'file', 'gcs', 'console', 'none')
+      - SQWAKVOX_TELEMETRY_BUCKET (GCS bucket for 'gcs' exporter, e.g. 'my-bucket')
+      - SQWAKVOX_TELEMETRY_PREFIX (object prefix, default 'telemetry/spans')
       - OTEL_EXPORTER_OTLP_ENDPOINT (e.g., 'http://localhost:4318')
+
+    If SQWAKVOX_TELEMETRY_EXPORTER is unset, the 'gcs' exporter is used when
+    SQWAKVOX_TELEMETRY_BUCKET is set, otherwise 'otlp' if an OTLP endpoint is
+    configured, otherwise 'file'.
     """
     global _telemetry_manager, _is_setup
 
@@ -157,9 +206,14 @@ def setup_telemetry(
         otlp_endpoint = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT") or os.environ.get(
             "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"
         )
+        gcs_bucket = os.environ.get("SQWAKVOX_TELEMETRY_BUCKET", "").strip()
+        gcs_prefix = os.environ.get("SQWAKVOX_TELEMETRY_PREFIX", "telemetry/spans")
 
         if not exporter_type:
-            exporter_type = "otlp" if otlp_endpoint else "file"
+            if gcs_bucket:
+                exporter_type = "gcs"
+            else:
+                exporter_type = "otlp" if otlp_endpoint else "file"
 
         # Configure Trace Exporters
         if exporter_type == "otlp":
@@ -178,6 +232,27 @@ def setup_telemetry(
                     "Failed to initialize OTLP exporter (%s), falling back to file exporter.", exc
                 )
                 exporter_type = "file"
+
+        if exporter_type == "gcs":
+            if not gcs_bucket:
+                logger.warning(
+                    "SQWAKVOX_TELEMETRY_EXPORTER=gcs but SQWAKVOX_TELEMETRY_BUCKET is unset; "
+                    "falling back to file exporter."
+                )
+                exporter_type = "file"
+            else:
+                try:
+                    gcs_exporter = GCSJSONLSpanExporter(bucket=gcs_bucket, prefix=gcs_prefix)
+                    tracer_provider.add_span_processor(BatchSpanProcessor(gcs_exporter))
+                    logger.info(
+                        "GCS JSONL Trace Exporter initialized: gs://%s/%s", gcs_bucket, gcs_prefix
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to initialize GCS exporter (%s), falling back to file exporter.",
+                        exc,
+                    )
+                    exporter_type = "file"
 
         if exporter_type == "file":
             json_exporter = JSONFileSpanExporter(file_path=file_path)

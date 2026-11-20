@@ -283,7 +283,11 @@ class DocSession:
             self._emit(EVENT_JOB, {"job": job.as_dict()})
             self._emit(EVENT_ERROR, {"job_id": job.job_id, "message": job.error})
             return dict(job.result)
-        job.state = JOB_SUCCESS
+        if isinstance(result, dict) and result.get("ok") is False:
+            job.state = JOB_FAILURE
+            job.error = str(result.get("error") or "Job failed.")
+        else:
+            job.state = JOB_SUCCESS
         job.result = result
         self._emit(EVENT_JOB, {"job": job.as_dict()})
         return dict(result)
@@ -1032,13 +1036,6 @@ class DocSession:
         loaded.pending.pop(start, None)
         if generation != loaded.paging_generation:
             return {"ok": True, "stale": True}
-        if start in loaded.batch_cache:
-            # Chain the next prefetch so the cache stays one slice ahead.
-            self._submit(
-                self._prefetch(source, start + loaded.batch_size),
-                kind="prefetch",
-                source=source,
-            )
         return {"ok": True, "start_page": start, "pages": [start, end]}
 
     async def _load_more(self, source: str) -> dict[str, Any]:
@@ -1076,6 +1073,13 @@ class DocSession:
         if source == self._active_source:
             self.doc_context = get_domain(loaded.domain_id).context_for(loaded.structured)
         self._emit(EVENT_RENDER, {"source": source, "page_range": self.page_info(source)})
+        # Keep one PDF slice ahead of what the user has revealed.
+        if not loaded.total_pages or loaded.rendered_pages < loaded.total_pages:
+            self._submit(
+                self._prefetch(source, loaded.rendered_pages + 1),
+                kind="prefetch",
+                source=source,
+            )
         return {
             "ok": True,
             "pages_added": pages_in_batch,
@@ -1129,6 +1133,13 @@ class DocSession:
         page_range = self.page_info(source)
         self._emit(EVENT_RENDER, {"source": source, "page_range": page_range})
         self._emit(EVENT_DOCUMENT, {"event": "seeked", "document": self.documents()})
+        # Keep one PDF slice ahead of the newly seeked window.
+        if not loaded.total_pages or loaded.rendered_pages < loaded.total_pages:
+            self._submit(
+                self._prefetch(source, loaded.rendered_pages + 1),
+                kind="prefetch",
+                source=source,
+            )
         return {
             "ok": True,
             "source": source,
