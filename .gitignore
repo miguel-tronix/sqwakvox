@@ -25,3 +25,6 @@ celerybeat.pid
 node_modules/*
 .coverage
 .vscode/settings.json
+
+# cloudignore
+.cloudignore
