@@ -329,13 +329,30 @@ export SQWAKVOX_TELEMETRY_FILE=sqwakvox_telemetry.jsonl
 # Set OTLP collector endpoint
 export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4318"
 
-# Upload JSONL spans to a GCS bucket (one object per batch, for Cloud Run
-# deployments without persistent disk). The Cloud Run service account needs
-# roles/storage.objectCreator on the bucket. deploy/cloudrun.sh creates
-# gs://nutriteasy-sqwakvox-telemetry and sets these automatically.
+# Upload date-partitioned JSONL spans to a GCS bucket (one gzip-compressed
+# object per batch at <prefix>/dt=YYYY-MM-DD/<stamp>-<pid>-<uuid>.jsonl.gz,
+# for Cloud Run deployments without persistent disk). The Cloud Run service
+# account needs roles/storage.objectCreator on the bucket. deploy/cloudrun.sh
+# creates a dedicated service account, configures a retention lifecycle policy,
+# and sets these automatically.
 export SQWAKVOX_TELEMETRY_BUCKET=nutriteasy-sqwakvox-telemetry
 export SQWAKVOX_TELEMETRY_PREFIX=telemetry/spans
+# Optional GCS tuning:
+# export SQWAKVOX_TELEMETRY_GCS_COMPRESS=true   # gzip batches (.jsonl.gz)
+# export SQWAKVOX_TELEMETRY_GCS_TIMEOUT=10      # upload timeout in seconds
+# export SQWAKVOX_TELEMETRY_RETENTION_DAYS=90   # bucket lifecycle delete age
 ```
+
+### Persistent Agent Storage (Cloud Run)
+
+`deploy/cloudrun.sh up` provisions a separate versioned GCS bucket (`gs://nutriteasy-sqwakvox-data` by default, override with `SQWAKVOX_DATA_BUCKET`), mounts it at `/data` via Cloud Storage FUSE, and sets `SQWAKVOX_DATA_DIR=/data`:
+
+- `skills/` — SWE `SKILL.md` files (seeded from bundled `skills/` on first boot, never auto-deleted)
+- `chat_logs/` — per-document JSONL chat histories (`SQWAKVOX_CHAT_LOG_DIR`)
+- `checkpoints/` — durable per-thread backups of LangGraph conversation memory (`SQWAKVOX_CHECKPOINTS_DIR`)
+- `uploads/` — browser-uploaded documents (`SQWAKVOX_UPLOADS_DIR`, auto-expired after 30 days via lifecycle rule)
+- `cache/docling/` — content-addressed gzipped cache of converted PDF slices (`SQWAKVOX_DOCLING_CACHE_DIR`, auto-expired after 90 days) so repeat opens and page seeks are instant
+- `state/` — atomic `sqlite3` snapshots of the local SWE retrieval index (`index.db`) and MCP SQLite DB (live SQLite runs on fast local `/tmp` disk, never directly over FUSE)
 
 ## Build with UV
 

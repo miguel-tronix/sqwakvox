@@ -341,15 +341,32 @@ function renderPager() {
   if (total) input.max = String(total);
   const go = el("button", { type: "submit", textContent: "Go", title: "Go to page" });
   form.append(input, go);
-  form.onsubmit = (event) => {
+  form.onsubmit = async (event) => {
     event.preventDefault();
-    seekToPage(doc.source, input.value);
+    if (go.disabled) return;
+    go.disabled = true;
+    try {
+      await seekToPage(doc.source, input.value);
+    } finally {
+      go.disabled = false;
+    }
   };
   pager.append(form);
 
   const more = el("button", { textContent: info.complete ? "All pages ✓" : "Load more ↓" });
   more.disabled = Boolean(info.complete);
-  more.onclick = () => callTool("sqwakvox_presenter_load_more", { source: doc.source }).catch((e) => toast(e.message, true));
+  more.onclick = async () => {
+    if (more.disabled) return;
+    more.disabled = true;
+    more.textContent = "Loading…";
+    try {
+      await callTool("sqwakvox_presenter_load_more", { source: doc.source });
+    } catch (e) {
+      toast(e.message, true);
+    } finally {
+      renderPager();
+    }
+  };
   pager.append(more);
 }
 

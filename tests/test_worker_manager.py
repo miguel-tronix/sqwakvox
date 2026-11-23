@@ -165,3 +165,18 @@ def test_one_worker_per_document_tab(mock_popen: MagicMock, manager: WorkerManag
 
     assert manager.queues == queues
     assert mock_popen.call_count == 3
+
+
+@patch("sqwakvox.worker_manager.subprocess.Popen")
+def test_cloud_run_streams_worker_logs_to_stderr(
+    mock_popen: MagicMock, manager: WorkerManager, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import sys
+
+    mock_popen.return_value = _fake_proc()
+    monkeypatch.setenv("K_SERVICE", "sqwakvox-web")
+
+    assert manager.ensure_worker("sqwakvox.doc0") is True
+    kwargs = mock_popen.call_args.kwargs
+    assert kwargs["stdout"] is sys.stderr
+    assert kwargs["stderr"] is sys.stderr

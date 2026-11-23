@@ -58,6 +58,7 @@ def main() -> None:
         app.worker_manager.stop_all()
         # Clean up the presenter's polling tasks on shutdown.
         import asyncio
+
         asyncio.run(presenter.close())
 
 

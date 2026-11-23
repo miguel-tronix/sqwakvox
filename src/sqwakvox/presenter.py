@@ -510,8 +510,8 @@ class Presenter:
                 poll.cancel()
             else:
                 logger.warning(
-                        "cancelling polling task %s from a dead loop",
-                        getattr(poll,"get_name",lambda: "?")() if hasattr(poll,"get_name") else "?",
+                    "cancelling polling task %s from a dead loop",
+                    getattr(poll, "get_name", lambda: "?")() if hasattr(poll, "get_name") else "?",
                 )
                 with contextlib.suppress(RuntimeError):
                     poll.cancel()

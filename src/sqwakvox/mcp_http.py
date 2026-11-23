@@ -73,9 +73,15 @@ def run_with_http_guard(mcp: Any, args: Any, *, server_name: str) -> None:
 
     *args* is an argparse Namespace with ``transport``, ``host``, ``port``.
     """
+    from sqwakvox.telemetry import shutdown_telemetry
+
+    os.environ.setdefault("SQWAKVOX_PROCESS_ROLE", f"mcp-{server_name}")
     transport = getattr(args, "transport", "stdio")
     if transport == "stdio":
-        mcp.run(transport="stdio")
+        try:
+            mcp.run(transport="stdio")
+        finally:
+            shutdown_telemetry()
         return
 
     err = http_opt_in_error(server_name)
@@ -97,7 +103,10 @@ def run_with_http_guard(mcp: Any, args: Any, *, server_name: str) -> None:
         "host": getattr(args, "host", "127.0.0.1"),
         "port": getattr(args, "port", 8000),
     }
-    if transport == "sse":
-        mcp.run(transport="sse", **transport_kw)
-    else:
-        mcp.run(transport="streamable-http", **transport_kw)
+    try:
+        if transport == "sse":
+            mcp.run(transport="sse", **transport_kw)
+        else:
+            mcp.run(transport="streamable-http", **transport_kw)
+    finally:
+        shutdown_telemetry()

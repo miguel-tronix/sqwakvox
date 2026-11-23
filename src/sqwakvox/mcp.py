@@ -13,6 +13,7 @@ rehydrate cleanly.
 
 from __future__ import annotations
 
+import os
 from collections.abc import AsyncIterator, Mapping, Sequence
 from contextlib import AsyncExitStack, asynccontextmanager
 from datetime import timedelta
@@ -145,6 +146,36 @@ McpConnection: TypeAdapter[list[MCPParams]] = TypeAdapter(
 """Adapter used to rehydrate broker payloads back into :data:`MCPParams`."""
 
 
+#: Environment variable prefixes/names forwarded to local stdio MCP subprocesses.
+#: ``mcp.client.stdio.get_default_environment()`` strips the child environment
+#: down to HOME/PATH/USER/etc., which otherwise drops Cloud Run GCS telemetry
+#: configuration and causes MCP tool spans to fall back to ephemeral local files.
+_STDIO_FORWARD_PREFIXES = ("SQWAKVOX_TELEMETRY_", "OTEL_")
+_STDIO_FORWARD_EXACT = frozenset(
+    {
+        "K_SERVICE",
+        "K_REVISION",
+        "K_CONFIGURATION",
+        "GOOGLE_APPLICATION_CREDENTIALS",
+        "GOOGLE_CLOUD_PROJECT",
+        "SQWAKVOX_DATA_DIR",
+        "SQWAKVOX_SKILLS_DIR",
+        "SQWAKVOX_SWE_INDEX_DIR",
+        "SQWAKVOX_STATE_DIR",
+        "SQWAKVOX_MCP_READ_ONLY",
+    }
+)
+
+
+def _forwarded_stdio_env() -> dict[str, str]:
+    """Return telemetry and Cloud Run env vars set in the current process."""
+    return {
+        key: val
+        for key, val in os.environ.items()
+        if val and (key in _STDIO_FORWARD_EXACT or key.startswith(_STDIO_FORWARD_PREFIXES))
+    }
+
+
 def to_connection(config: MCPParams) -> Connection:
     """Convert *config* to a ``langchain-mcp-adapters`` connection dict.
 
@@ -158,8 +189,11 @@ def to_connection(config: MCPParams) -> Connection:
             "command": config.command,
             "args": list(config.args),
         }
+        merged_env = _forwarded_stdio_env()
         if config.env:
-            raw["env"] = dict(config.env)
+            merged_env.update(config.env)
+        if merged_env:
+            raw["env"] = merged_env
         typed: Connection = cast("StdioConnection", raw)
     elif isinstance(config, MCPSse):
         raw = {"transport": "sse", "url": config.url}

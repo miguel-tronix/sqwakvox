@@ -54,9 +54,10 @@ RUN NO_CUDA_ARGS=$(grep -oE '^name = "(nvidia-[^"]+|cuda-[^"]+|triton|torch|torc
         torch==2.12.0 torchvision==0.27.0 \
     && rm -rf /tmp/uv-cache
 
-# 2. Copy application code, MCP config, and lightweight sample PDFs
+# 2. Copy application code, MCP config, bundled seed skills, and lightweight sample PDFs
 COPY src/ ./src/
 COPY mcp_servers.json ./mcp_servers.json
+COPY skills/ ./skills/
 COPY samples/ ./samples/
 COPY deploy/entrypoint.sh /usr/local/bin/entrypoint.sh
 

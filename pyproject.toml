@@ -128,5 +128,6 @@ module = [
     "opentelemetry.*",
     "celery.*",
     "kombu.*",
+    "google.cloud.*",
 ]
 ignore_missing_imports = true

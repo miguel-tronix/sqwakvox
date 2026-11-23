@@ -7,22 +7,27 @@ cross-validation, and MCP tool execution.
 
 from __future__ import annotations
 
+import gzip
+import importlib.metadata
 import json
 import logging
 import os
+import socket
 import time
 from collections.abc import Callable, Generator, Sequence
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, ParamSpec, TypeVar
+from uuid import uuid4
 
 from opentelemetry import metrics, trace
 from opentelemetry.metrics import Counter, Histogram, Meter, UpDownCounter
 from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+from opentelemetry.sdk.metrics.export import MetricReader, PeriodicExportingMetricReader
 from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
+from opentelemetry.sdk.trace import ReadableSpan, SpanProcessor, TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, SpanExporter, SpanExportResult
 from opentelemetry.trace import Status, StatusCode, Tracer
 
@@ -32,29 +37,92 @@ P = ParamSpec("P")
 R = TypeVar("R")
 
 SERVICE_NAME = "sqwakvox"
-SERVICE_VERSION = "0.1.2"
+
+
+def _package_version() -> str:
+    try:
+        return importlib.metadata.version("sqwakvox")
+    except importlib.metadata.PackageNotFoundError:
+        return "0.0.0-dev"
+
+
+SERVICE_VERSION = _package_version()
+
+#: Default GCS batch flush delay (ms) when OTEL_BSP_SCHEDULE_DELAY is unset.
+#: Longer than OTel's 5s default to avoid tiny-object proliferation in GCS;
+#: graceful shutdown hooks flush pending spans on exit.
+DEFAULT_GCS_SCHEDULE_DELAY_MS = 30_000
+
+#: Default GCS upload timeout (seconds), bounded to fit Cloud Run's 10s SIGTERM window.
+DEFAULT_GCS_UPLOAD_TIMEOUT_SEC = 10.0
+
+
+def _parse_bool_env(name: str, default: bool) -> bool:
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return default
+    return raw.strip().lower() in ("true", "1", "yes", "on")
+
+
+def _parse_float_env(name: str, default: float) -> float:
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        val = float(raw)
+        return val if val > 0 else default
+    except ValueError:
+        return default
 
 
 def _span_to_dict(span: ReadableSpan) -> dict[str, Any]:
-    return {
+    start_iso: str | None = None
+    if span.start_time:
+        start_iso = datetime.fromtimestamp(span.start_time / 1e9, tz=UTC).isoformat()
+
+    events_out: list[dict[str, Any]] = []
+    for ev in getattr(span, "events", None) or ():
+        events_out.append(
+            {
+                "name": ev.name,
+                "timestamp_ns": ev.timestamp,
+                "attributes": dict(ev.attributes) if ev.attributes else {},
+            }
+        )
+
+    resource = getattr(span, "resource", None)
+    resource_attrs = (
+        dict(resource.attributes)
+        if resource is not None and getattr(resource, "attributes", None)
+        else {}
+    )
+
+    record: dict[str, Any] = {
         "name": span.name,
         "trace_id": f"{span.context.trace_id:032x}",
         "span_id": f"{span.context.span_id:016x}",
         "parent_span_id": (f"{span.parent.span_id:016x}" if span.parent else None),
+        "start_time": start_iso,
         "start_time_ns": span.start_time,
         "end_time_ns": span.end_time,
         "duration_ms": (
-            (span.end_time - span.start_time) / 1e6
-            if span.end_time and span.start_time
-            else 0.0
+            (span.end_time - span.start_time) / 1e6 if span.end_time and span.start_time else 0.0
         ),
         "attributes": dict(span.attributes) if span.attributes else {},
         "status": span.status.status_code.name,
     }
+    status_desc = getattr(span.status, "description", None)
+    if status_desc:
+        record["status_description"] = status_desc
+    if events_out:
+        record["events"] = events_out
+    if resource_attrs:
+        record["resource"] = resource_attrs
+    return record
 
 
 def _spans_to_jsonl(spans: Sequence[ReadableSpan]) -> str:
-    return "".join(json.dumps(_span_to_dict(span)) + "\n" for span in spans)
+    return "".join(json.dumps(_span_to_dict(span), default=str) + "\n" for span in spans)
 
 
 class JSONFileSpanExporter(SpanExporter):
@@ -68,6 +136,8 @@ class JSONFileSpanExporter(SpanExporter):
         self.file_path = Path(file_path)
 
     def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:
+        if not spans:
+            return SpanExportResult.SUCCESS
         try:
             with self.file_path.open("a", encoding="utf-8") as f:
                 f.write(_spans_to_jsonl(spans))
@@ -81,32 +151,74 @@ class JSONFileSpanExporter(SpanExporter):
 
 
 class GCSJSONLSpanExporter(SpanExporter):
-    """Export OpenTelemetry spans as JSON Lines objects to a GCS bucket.
+    """Export OpenTelemetry spans as date-partitioned JSONL objects to a GCS bucket.
 
     Cloud Run has no persistent disk, so each export batch is uploaded as a
-    new object named ``<prefix>/<utc-timestamp>-<uuid>.jsonl``. Objects are
-    append-only and race-free across instances; no read-modify-write of a
-    single rolling file is attempted.
+    new append-only object named
+    ``<prefix>/dt=YYYY-MM-DD/<utc-timestamp>-<pid>-<uuid>.jsonl[.gz]``.
+    Objects are race-free across instances and processes (no read-modify-write),
+    gzip-compressed by default, and fork-safe (the underlying GCS client is
+    re-created automatically if ``os.getpid()`` changes across a Celery fork).
     """
 
-    def __init__(self, bucket: str, prefix: str = "telemetry/spans"):
+    def __init__(
+        self,
+        bucket: str,
+        prefix: str = "telemetry/spans",
+        *,
+        compress: bool = True,
+        timeout: float = DEFAULT_GCS_UPLOAD_TIMEOUT_SEC,
+    ):
         from google.cloud import storage  # lazy import: optional at runtime
 
+        self._storage_module = storage
         self.bucket_name = bucket
-        self.prefix = prefix.rstrip("/")
-        self._client = storage.Client()
-        self._bucket = self._client.bucket(bucket)
+        self.prefix = prefix.strip("/")
+        self.compress = compress
+        self.timeout = timeout
+        self._client: Any = None
+        self._bucket: Any = None
+        self._client_pid: int | None = None
+        # Validate client construction eagerly so bad credentials / missing SDK
+        # surface at startup instead of silently failing on the first batch.
+        self._get_bucket()
+
+    def _get_bucket(self) -> Any:
+        pid = os.getpid()
+        if self._bucket is None or self._client_pid != pid:
+            self._client = self._storage_module.Client()
+            self._bucket = self._client.bucket(self.bucket_name)
+            self._client_pid = pid
+        return self._bucket
+
+    def _blob_name(self, now: datetime) -> str:
+        date_part = now.strftime("dt=%Y-%m-%d")
+        stamp = now.strftime("%Y%m%dT%H%M%S%f")
+        suffix = ".jsonl.gz" if self.compress else ".jsonl"
+        filename = f"{stamp}-{os.getpid()}-{uuid4().hex}{suffix}"
+        if self.prefix:
+            return f"{self.prefix}/{date_part}/{filename}"
+        return f"{date_part}/{filename}"
 
     def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:
-        from datetime import UTC, datetime
-        from uuid import uuid4
-
+        if not spans:
+            return SpanExportResult.SUCCESS
         try:
-            stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%f")
-            blob_name = f"{self.prefix}/{stamp}-{uuid4().hex}.jsonl"
-            blob = self._bucket.blob(blob_name)
+            now = datetime.now(UTC)
+            blob_name = self._blob_name(now)
+            blob = self._get_bucket().blob(blob_name)
+            jsonl_text = _spans_to_jsonl(spans)
+            if self.compress:
+                payload: bytes | str = gzip.compress(jsonl_text.encode("utf-8"))
+                content_type = "application/gzip"
+            else:
+                payload = jsonl_text
+                content_type = "application/x-ndjson"
             blob.upload_from_string(
-                _spans_to_jsonl(spans), content_type="application/x-ndjson"
+                payload,
+                content_type=content_type,
+                if_generation_match=0,
+                timeout=self.timeout,
             )
             return SpanExportResult.SUCCESS
         except Exception as exc:
@@ -114,7 +226,14 @@ class GCSJSONLSpanExporter(SpanExporter):
             return SpanExportResult.FAILURE
 
     def shutdown(self) -> None:
-        pass
+        if self._client is not None:
+            with suppress(Exception):
+                close_fn = getattr(self._client, "close", None)
+                if callable(close_fn):
+                    close_fn()
+            self._client = None
+            self._bucket = None
+            self._client_pid = None
 
 
 @dataclass
@@ -124,6 +243,7 @@ class TelemetryManager:
     tracer: Tracer
     meter: Meter
     is_enabled: bool = True
+    exporter_name: str = "none"
 
     # Metric Instruments
     doc_ingest_counter: Counter | None = None
@@ -148,6 +268,42 @@ class TelemetryManager:
 
 _telemetry_manager: TelemetryManager | None = None
 _is_setup: bool = False
+_registered_span_processors: list[SpanProcessor] = []
+_active_tracer_provider: TracerProvider | None = None
+_active_meter_provider: MeterProvider | None = None
+
+
+def _build_resource(
+    service_name: str,
+    service_version: str,
+    role: str | None = None,
+) -> Resource:
+    attrs: dict[str, Any] = {
+        "service.name": service_name,
+        "service.version": service_version,
+        "telemetry.sdk.language": "python",
+        "process.pid": os.getpid(),
+        "host.name": socket.gethostname(),
+    }
+    resolved_role = (role or os.environ.get("SQWAKVOX_PROCESS_ROLE", "")).strip()
+    if resolved_role:
+        attrs["sqwakvox.process.role"] = resolved_role
+    k_service = os.environ.get("K_SERVICE", "").strip()
+    k_revision = os.environ.get("K_REVISION", "").strip()
+    k_config = os.environ.get("K_CONFIGURATION", "").strip()
+    if k_service:
+        attrs["cloud.platform"] = "gcp_cloud_run"
+        attrs["faas.name"] = k_service
+    if k_revision:
+        attrs["faas.version"] = k_revision
+    if k_config:
+        attrs["cloud_run.configuration"] = k_config
+    return Resource.create(attrs)
+
+
+def _add_span_processor(tracer_provider: TracerProvider, processor: SpanProcessor) -> None:
+    tracer_provider.add_span_processor(processor)
+    _registered_span_processors.append(processor)
 
 
 def setup_telemetry(
@@ -155,6 +311,7 @@ def setup_telemetry(
     service_version: str = SERVICE_VERSION,
     file_path: Path | str = "sqwakvox_telemetry.jsonl",
     force: bool = False,
+    role: str | None = None,
 ) -> TelemetryManager:
     """Initialize OpenTelemetry tracer and meter providers for Sqwakvox.
 
@@ -163,46 +320,42 @@ def setup_telemetry(
       - SQWAKVOX_TELEMETRY_EXPORTER ('otlp', 'file', 'gcs', 'console', 'none')
       - SQWAKVOX_TELEMETRY_BUCKET (GCS bucket for 'gcs' exporter, e.g. 'my-bucket')
       - SQWAKVOX_TELEMETRY_PREFIX (object prefix, default 'telemetry/spans')
+      - SQWAKVOX_TELEMETRY_GCS_COMPRESS (default: 'true', writes .jsonl.gz)
+      - SQWAKVOX_TELEMETRY_GCS_TIMEOUT (default: '10', upload timeout in seconds)
+      - SQWAKVOX_PROCESS_ROLE (optional process role label, e.g. 'web', 'worker')
       - OTEL_EXPORTER_OTLP_ENDPOINT (e.g., 'http://localhost:4318')
 
     If SQWAKVOX_TELEMETRY_EXPORTER is unset, the 'gcs' exporter is used when
     SQWAKVOX_TELEMETRY_BUCKET is set, otherwise 'otlp' if an OTLP endpoint is
     configured, otherwise 'file'.
     """
-    global _telemetry_manager, _is_setup
+    global _telemetry_manager, _is_setup, _active_tracer_provider, _active_meter_provider
 
     if _is_setup and _telemetry_manager is not None and not force:
         return _telemetry_manager
 
-    enabled_str = os.environ.get("SQWAKVOX_TELEMETRY_ENABLED", "true").lower()
-    enabled = enabled_str in ("true", "1", "yes", "on")
+    if force and _registered_span_processors:
+        for prev in list(_registered_span_processors):
+            with suppress(Exception):
+                prev.shutdown()
+        _registered_span_processors.clear()
 
-    resource = Resource.create(
-        {
-            "service.name": service_name,
-            "service.version": service_version,
-            "telemetry.sdk.language": "python",
-        }
-    )
+    enabled = _parse_bool_env("SQWAKVOX_TELEMETRY_ENABLED", default=True)
+    resource = _build_resource(service_name, service_version, role=role)
 
     current_tp = trace.get_tracer_provider()
-    if isinstance(current_tp, TracerProvider):
+    if isinstance(current_tp, TracerProvider) and not getattr(current_tp, "_shutdown", False):
         tracer_provider = current_tp
     else:
         tracer_provider = TracerProvider(resource=resource)
         with suppress(Exception):
             trace.set_tracer_provider(tracer_provider)
 
-    current_mp = metrics.get_meter_provider()
-    if isinstance(current_mp, MeterProvider):
-        meter_provider = current_mp
-    else:
-        meter_provider = MeterProvider(resource=resource)
-        with suppress(Exception):
-            metrics.set_meter_provider(meter_provider)
+    active_exporter = "none"
+    metric_readers: list[MetricReader] = []
 
     if enabled:
-        exporter_type = os.environ.get("SQWAKVOX_TELEMETRY_EXPORTER", "").lower()
+        exporter_type = os.environ.get("SQWAKVOX_TELEMETRY_EXPORTER", "").strip().lower()
         otlp_endpoint = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT") or os.environ.get(
             "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"
         )
@@ -210,10 +363,7 @@ def setup_telemetry(
         gcs_prefix = os.environ.get("SQWAKVOX_TELEMETRY_PREFIX", "telemetry/spans")
 
         if not exporter_type:
-            if gcs_bucket:
-                exporter_type = "gcs"
-            else:
-                exporter_type = "otlp" if otlp_endpoint else "file"
+            exporter_type = "gcs" if gcs_bucket else ("otlp" if otlp_endpoint else "file")
 
         # Configure Trace Exporters
         if exporter_type == "otlp":
@@ -225,7 +375,8 @@ def setup_telemetry(
                 otlp_span_exporter = OTLPHttpSpanExporter(
                     endpoint=otlp_endpoint or "http://localhost:4318/v1/traces"
                 )
-                tracer_provider.add_span_processor(BatchSpanProcessor(otlp_span_exporter))
+                _add_span_processor(tracer_provider, BatchSpanProcessor(otlp_span_exporter))
+                active_exporter = "otlp"
                 logger.info("OTLP Trace Exporter initialized with endpoint: %s", otlp_endpoint)
             except Exception as exc:
                 logger.warning(
@@ -242,10 +393,32 @@ def setup_telemetry(
                 exporter_type = "file"
             else:
                 try:
-                    gcs_exporter = GCSJSONLSpanExporter(bucket=gcs_bucket, prefix=gcs_prefix)
-                    tracer_provider.add_span_processor(BatchSpanProcessor(gcs_exporter))
+                    gcs_compress = _parse_bool_env("SQWAKVOX_TELEMETRY_GCS_COMPRESS", default=True)
+                    gcs_timeout = _parse_float_env(
+                        "SQWAKVOX_TELEMETRY_GCS_TIMEOUT", DEFAULT_GCS_UPLOAD_TIMEOUT_SEC
+                    )
+                    gcs_exporter = GCSJSONLSpanExporter(
+                        bucket=gcs_bucket,
+                        prefix=gcs_prefix,
+                        compress=gcs_compress,
+                        timeout=gcs_timeout,
+                    )
+                    schedule_delay_ms: float | None = None
+                    if not os.environ.get("OTEL_BSP_SCHEDULE_DELAY"):
+                        schedule_delay_ms = DEFAULT_GCS_SCHEDULE_DELAY_MS
+                    _add_span_processor(
+                        tracer_provider,
+                        BatchSpanProcessor(
+                            gcs_exporter,
+                            schedule_delay_millis=schedule_delay_ms,
+                        ),
+                    )
+                    active_exporter = "gcs"
                     logger.info(
-                        "GCS JSONL Trace Exporter initialized: gs://%s/%s", gcs_bucket, gcs_prefix
+                        "GCS JSONL Trace Exporter initialized: gs://%s/%s (compress=%s)",
+                        gcs_bucket,
+                        gcs_prefix.strip("/"),
+                        gcs_compress,
                     )
                 except Exception as exc:
                     logger.warning(
@@ -256,16 +429,19 @@ def setup_telemetry(
 
         if exporter_type == "file":
             json_exporter = JSONFileSpanExporter(file_path=file_path)
-            tracer_provider.add_span_processor(BatchSpanProcessor(json_exporter))
+            _add_span_processor(tracer_provider, BatchSpanProcessor(json_exporter))
+            active_exporter = "file"
             logger.info("JSON File Trace Exporter initialized: %s", file_path)
 
         elif exporter_type == "console":
             from opentelemetry.sdk.trace.export import ConsoleSpanExporter
 
-            tracer_provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
+            _add_span_processor(tracer_provider, BatchSpanProcessor(ConsoleSpanExporter()))
+            active_exporter = "console"
             logger.info("Console Trace Exporter initialized.")
 
-        # Configure Metrics Exporters
+        # Configure Metrics Exporters before setting global MeterProvider so
+        # metric readers are actually attached to the registered provider.
         try:
             if otlp_endpoint or exporter_type == "otlp":
                 from opentelemetry.exporter.otlp.proto.http.metric_exporter import (
@@ -275,16 +451,22 @@ def setup_telemetry(
                 metric_exporter = OTLPHttpMetricExporter(
                     endpoint=otlp_endpoint or "http://localhost:4318/v1/metrics"
                 )
-                reader = PeriodicExportingMetricReader(metric_exporter)
-                meter_provider = MeterProvider(resource=resource, metric_readers=[reader])
+                metric_readers.append(PeriodicExportingMetricReader(metric_exporter))
         except Exception as exc:
             logger.debug("OTLP Metrics Exporter not initialized: %s", exc)
 
-    trace.get_tracer_provider()
-    metrics.get_meter_provider()
+    current_mp = metrics.get_meter_provider()
+    if isinstance(current_mp, MeterProvider) and not getattr(current_mp, "_shutdown", False):
+        meter_provider = current_mp
+    else:
+        meter_provider = MeterProvider(resource=resource, metric_readers=metric_readers)
+        with suppress(Exception):
+            metrics.set_meter_provider(meter_provider)
 
-    tracer = trace.get_tracer(service_name, service_version)
-    meter = metrics.get_meter(service_name, service_version)
+    _active_tracer_provider = tracer_provider
+    _active_meter_provider = meter_provider
+    tracer = tracer_provider.get_tracer(service_name, service_version)
+    meter = meter_provider.get_meter(service_name, service_version)
 
     # Instantiate Metric Instruments
     doc_ingest_counter = meter.create_counter(
@@ -362,6 +544,7 @@ def setup_telemetry(
         tracer=tracer,
         meter=meter,
         is_enabled=enabled,
+        exporter_name=active_exporter,
         doc_ingest_counter=doc_ingest_counter,
         doc_ingest_duration=doc_ingest_duration,
         doc_markdown_length=doc_markdown_length,
@@ -413,7 +596,10 @@ def trace_span(
         start = time.monotonic()
         try:
             yield span
-            span.set_status(Status(StatusCode.OK))
+            # Respect an explicit ERROR status set inside the span body.
+            status = getattr(span, "status", None)
+            if status is None or status.status_code == StatusCode.UNSET:
+                span.set_status(Status(StatusCode.OK))
         except Exception as exc:
             span.record_exception(exc)
             span.set_status(Status(StatusCode.ERROR, str(exc)))
@@ -440,17 +626,41 @@ def instrument_function(
     return decorator
 
 
-def shutdown_telemetry() -> None:
-    """Flush pending spans and shutdown tracer providers gracefully on application exit."""
-    global _telemetry_manager, _is_setup
+def flush_telemetry(timeout_millis: int = 5000) -> None:
+    """Flush pending spans and metrics without shutting down providers."""
     try:
-        provider = trace.get_tracer_provider()
-        if hasattr(provider, "force_flush"):
-            provider.force_flush()
-        if hasattr(provider, "shutdown"):
-            provider.shutdown()
+        tp: Any = _active_tracer_provider or trace.get_tracer_provider()
+        if hasattr(tp, "force_flush"):
+            tp.force_flush(timeout_millis=timeout_millis)
+    except Exception as exc:
+        logger.debug("Error flushing tracer provider: %s", exc)
+    try:
+        mp: Any = _active_meter_provider or metrics.get_meter_provider()
+        if hasattr(mp, "force_flush"):
+            mp.force_flush(timeout_millis=timeout_millis)
+    except Exception as exc:
+        logger.debug("Error flushing meter provider: %s", exc)
+
+
+def shutdown_telemetry(timeout_millis: int = 5000) -> None:
+    """Flush pending spans and metrics and shutdown providers gracefully on exit."""
+    global _telemetry_manager, _is_setup, _active_tracer_provider, _active_meter_provider
+    try:
+        flush_telemetry(timeout_millis=timeout_millis)
+        tp: Any = _active_tracer_provider or trace.get_tracer_provider()
+        if hasattr(tp, "shutdown"):
+            tp.shutdown()
     except Exception as exc:
         logger.debug("Error shutting down tracer provider: %s", exc)
+    try:
+        mp: Any = _active_meter_provider or metrics.get_meter_provider()
+        if hasattr(mp, "shutdown"):
+            mp.shutdown()
+    except Exception as exc:
+        logger.debug("Error shutting down meter provider: %s", exc)
     finally:
+        _registered_span_processors.clear()
+        _active_tracer_provider = None
+        _active_meter_provider = None
         _telemetry_manager = None
         _is_setup = False

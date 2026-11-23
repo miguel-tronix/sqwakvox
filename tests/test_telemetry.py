@@ -1,16 +1,22 @@
+import gzip
 import json
 import sys
 import types
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
+import pytest
+from opentelemetry.trace import Status, StatusCode
+
 from sqwakvox.controller import AppController
-from sqwakvox.guardrails import AnyGuardrailValidator, FinancialRuleEngine, PIIRedactor
+from sqwakvox.guardrails import AnyGuardrailValidator, AuditLogger, FinancialRuleEngine, PIIRedactor
 from sqwakvox.mcp_calc_server import calculator, compound_interest, stats_summary
 from sqwakvox.models import StructuredDocument, TableData
 from sqwakvox.telemetry import (
     GCSJSONLSpanExporter,
     JSONFileSpanExporter,
+    flush_telemetry,
     instrument_function,
     setup_telemetry,
     shutdown_telemetry,
@@ -53,22 +59,54 @@ def _mock_span() -> MagicMock:
     span.context.trace_id = 12345
     span.context.span_id = 67890
     span.parent = None
-    span.start_time = 1000
-    span.end_time = 2000
+    span.start_time = 1_700_000_000_000_000_000
+    span.end_time = 1_700_000_000_001_000_000
     span.attributes = {"key": "value"}
     span.status.status_code.name = "OK"
+    span.status.description = None
+    span.events = []
+    span.resource.attributes = {"service.name": "sqwakvox"}
     return span
 
 
-def test_gcs_jsonl_span_exporter_uploads_batch(monkeypatch) -> None:
-    uploaded: dict[str, str] = {}
+def _install_fake_gcs(monkeypatch: pytest.MonkeyPatch, client_cls: type[Any]) -> None:
+    fake_storage = types.ModuleType("google.cloud.storage")
+    fake_storage.Client = client_cls  # type: ignore[attr-defined]
+    fake_google = types.ModuleType("google")
+    fake_cloud = types.ModuleType("google.cloud")
+    fake_cloud.storage = fake_storage  # type: ignore[attr-defined]
+    fake_google.cloud = fake_cloud  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "google", fake_google)
+    monkeypatch.setitem(sys.modules, "google.cloud", fake_cloud)
+    monkeypatch.setitem(sys.modules, "google.cloud.storage", fake_storage)
+
+
+def test_gcs_jsonl_span_exporter_uploads_compressed_partitioned_batch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    uploads: list[dict[str, Any]] = []
+    closed: list[bool] = []
 
     class FakeBlob:
         def __init__(self, name: str) -> None:
             self.name = name
 
-        def upload_from_string(self, data: str, content_type: str | None = None) -> None:
-            uploaded[self.name] = data
+        def upload_from_string(
+            self,
+            data: bytes | str,
+            content_type: str | None = None,
+            if_generation_match: int | None = None,
+            timeout: float | None = None,
+        ) -> None:
+            uploads.append(
+                {
+                    "name": self.name,
+                    "data": data,
+                    "content_type": content_type,
+                    "if_generation_match": if_generation_match,
+                    "timeout": timeout,
+                }
+            )
 
     class FakeBucket:
         def blob(self, name: str) -> FakeBlob:
@@ -79,30 +117,112 @@ def test_gcs_jsonl_span_exporter_uploads_batch(monkeypatch) -> None:
             assert name == "test-bucket"
             return FakeBucket()
 
-    fake_storage = types.ModuleType("google.cloud.storage")
-    fake_storage.Client = FakeClient
-    fake_google = types.ModuleType("google")
-    fake_cloud = types.ModuleType("google.cloud")
-    fake_cloud.storage = fake_storage
-    fake_google.cloud = fake_cloud
-    monkeypatch.setitem(sys.modules, "google", fake_google)
-    monkeypatch.setitem(sys.modules, "google.cloud", fake_cloud)
-    monkeypatch.setitem(sys.modules, "google.cloud.storage", fake_storage)
+        def close(self) -> None:
+            closed.append(True)
 
-    exporter = GCSJSONLSpanExporter(bucket="test-bucket", prefix="telemetry/spans/")
+    _install_fake_gcs(monkeypatch, FakeClient)
+
+    exporter = GCSJSONLSpanExporter(
+        bucket="test-bucket", prefix="/telemetry/spans/", compress=True, timeout=8.0
+    )
+    # Empty batch is a no-op and creates no empty object.
+    assert exporter.export([]).name == "SUCCESS"
+    assert uploads == []
+
     res = exporter.export([_mock_span()])
 
     assert res.name == "SUCCESS"
-    assert len(uploaded) == 1
-    blob_name, payload = next(iter(uploaded.items()))
-    assert blob_name.startswith("telemetry/spans/")
-    assert blob_name.endswith(".jsonl")
+    assert len(uploads) == 1
+    up = uploads[0]
+    assert up["name"].startswith("telemetry/spans/dt=")
+    assert up["name"].endswith(".jsonl.gz")
+    assert up["content_type"] == "application/gzip"
+    assert up["if_generation_match"] == 0
+    assert up["timeout"] == 8.0
+    assert isinstance(up["data"], bytes)
+    payload = gzip.decompress(up["data"]).decode("utf-8")
     lines = [json.loads(line) for line in payload.splitlines() if line.strip()]
     assert lines[0]["name"] == "gcs_span"
     assert lines[0]["attributes"]["key"] == "value"
+    assert lines[0]["start_time"] is not None
+    assert lines[0]["resource"]["service.name"] == "sqwakvox"
+
+    exporter.shutdown()
+    assert closed == [True]
 
 
-def test_gcs_jsonl_span_exporter_failure_handling(monkeypatch) -> None:
+def test_gcs_jsonl_span_exporter_uncompressed_and_empty_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    uploads: list[dict[str, Any]] = []
+
+    class FakeBlob:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+        def upload_from_string(self, data: bytes | str, **kwargs: Any) -> None:
+            uploads.append({"name": self.name, "data": data, **kwargs})
+
+    class FakeBucket:
+        def blob(self, name: str) -> FakeBlob:
+            return FakeBlob(name)
+
+    class FakeClient:
+        def bucket(self, name: str) -> FakeBucket:
+            return FakeBucket()
+
+    _install_fake_gcs(monkeypatch, FakeClient)
+
+    exporter = GCSJSONLSpanExporter(bucket="test-bucket", prefix="", compress=False)
+    res = exporter.export([_mock_span()])
+
+    assert res.name == "SUCCESS"
+    assert len(uploads) == 1
+    assert uploads[0]["name"].startswith("dt=")
+    assert not uploads[0]["name"].startswith("/")
+    assert uploads[0]["name"].endswith(".jsonl")
+    assert uploads[0]["content_type"] == "application/x-ndjson"
+    assert isinstance(uploads[0]["data"], str)
+
+
+def test_gcs_jsonl_span_exporter_recreates_client_after_fork(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    created_pids: list[int] = []
+    current_pid = 1000
+
+    class FakeBlob:
+        def upload_from_string(self, data: bytes | str, **kwargs: Any) -> None:
+            pass
+
+    class FakeBucket:
+        def blob(self, name: str) -> FakeBlob:
+            return FakeBlob()
+
+    class FakeClient:
+        def __init__(self) -> None:
+            created_pids.append(current_pid)
+
+        def bucket(self, name: str) -> FakeBucket:
+            return FakeBucket()
+
+    _install_fake_gcs(monkeypatch, FakeClient)
+    monkeypatch.setattr("sqwakvox.telemetry.os.getpid", lambda: current_pid)
+
+    exporter = GCSJSONLSpanExporter(bucket="test-bucket")
+    assert created_pids == [1000]
+
+    # Same PID reuses client.
+    exporter.export([_mock_span()])
+    assert created_pids == [1000]
+
+    # Simulated fork changes PID -> fresh client created in child.
+    current_pid = 2000
+    exporter.export([_mock_span()])
+    assert created_pids == [1000, 2000]
+
+
+def test_gcs_jsonl_span_exporter_failure_handling(monkeypatch: pytest.MonkeyPatch) -> None:
     class BrokenBucket:
         def blob(self, name: str):
             raise RuntimeError("boom")
@@ -111,30 +231,33 @@ def test_gcs_jsonl_span_exporter_failure_handling(monkeypatch) -> None:
         def bucket(self, name: str):
             return BrokenBucket()
 
-    fake_storage = types.ModuleType("google.cloud.storage")
-    fake_storage.Client = BrokenClient
-    fake_google = types.ModuleType("google")
-    fake_cloud = types.ModuleType("google.cloud")
-    fake_cloud.storage = fake_storage
-    fake_google.cloud = fake_cloud
-    monkeypatch.setitem(sys.modules, "google", fake_google)
-    monkeypatch.setitem(sys.modules, "google.cloud", fake_cloud)
-    monkeypatch.setitem(sys.modules, "google.cloud.storage", fake_storage)
+    _install_fake_gcs(monkeypatch, BrokenClient)
 
     exporter = GCSJSONLSpanExporter(bucket="test-bucket")
     res = exporter.export([_mock_span()])
     assert res.name == "FAILURE"
 
 
-def test_setup_telemetry_prefers_gcs_when_bucket_set(monkeypatch, tmp_path: Path) -> None:
-    created: dict[str, str] = {}
+def test_setup_telemetry_prefers_gcs_when_bucket_set(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    created: dict[str, Any] = {}
 
     class FakeGCSExporter:
-        def __init__(self, bucket: str, prefix: str = "telemetry/spans") -> None:
+        def __init__(
+            self,
+            bucket: str,
+            prefix: str = "telemetry/spans",
+            *,
+            compress: bool = True,
+            timeout: float = 10.0,
+        ) -> None:
             created["bucket"] = bucket
             created["prefix"] = prefix
+            created["compress"] = compress
+            created["timeout"] = timeout
 
-        def export(self, spans):  # noqa: ANN001, ANN201
+        def export(self, spans: Any) -> Any:
             from opentelemetry.sdk.trace.export import SpanExportResult
 
             return SpanExportResult.SUCCESS
@@ -145,14 +268,70 @@ def test_setup_telemetry_prefers_gcs_when_bucket_set(monkeypatch, tmp_path: Path
     monkeypatch.setattr("sqwakvox.telemetry.GCSJSONLSpanExporter", FakeGCSExporter)
     monkeypatch.setenv("SQWAKVOX_TELEMETRY_BUCKET", "env-bucket")
     monkeypatch.setenv("SQWAKVOX_TELEMETRY_PREFIX", "custom/prefix")
+    monkeypatch.setenv("SQWAKVOX_TELEMETRY_GCS_COMPRESS", "false")
+    monkeypatch.setenv("SQWAKVOX_TELEMETRY_GCS_TIMEOUT", "7.5")
     monkeypatch.delenv("SQWAKVOX_TELEMETRY_EXPORTER", raising=False)
     monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
     monkeypatch.delenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", raising=False)
 
     tm = setup_telemetry(file_path=tmp_path / "unused.jsonl", force=True)
     assert tm.is_enabled is True
-    assert created == {"bucket": "env-bucket", "prefix": "custom/prefix"}
+    assert tm.exporter_name == "gcs"
+    assert created == {
+        "bucket": "env-bucket",
+        "prefix": "custom/prefix",
+        "compress": False,
+        "timeout": 7.5,
+    }
     shutdown_telemetry()
+
+
+def test_span_serialization_preserves_exceptions_error_status_and_audit_events(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    telemetry_file = tmp_path / "rich_spans.jsonl"
+    monkeypatch.delenv("SQWAKVOX_TELEMETRY_BUCKET", raising=False)
+    monkeypatch.delenv("SQWAKVOX_TELEMETRY_EXPORTER", raising=False)
+    monkeypatch.setattr(AuditLogger, "LOG_PATH", tmp_path / "audit.jsonl")
+
+    setup_telemetry(file_path=telemetry_file, force=True, role="test-role")
+
+    with pytest.raises(ValueError, match="bad input"), trace_span("failing_op"):
+        raise ValueError("bad input")
+
+    # Explicit ERROR status inside a non-raising span must not be overwritten by OK.
+    with trace_span("soft_error_op") as span:
+        span.set_status(Status(StatusCode.ERROR, "handled failure"))
+        AuditLogger.log(
+            document_id="doc.pdf",
+            operation="user_query",
+            action="ALLOWED",
+            input_text="revenue?",
+        )
+
+    flush_telemetry()
+    shutdown_telemetry()
+
+    lines = [
+        json.loads(line)
+        for line in telemetry_file.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    by_name = {entry["name"]: entry for entry in lines}
+
+    failing = by_name["failing_op"]
+    assert failing["status"] == "ERROR"
+    assert "bad input" in failing["status_description"]
+    assert any(ev["name"] == "exception" for ev in failing.get("events", []))
+    assert failing["start_time"] is not None
+
+    soft = by_name["soft_error_op"]
+    assert soft["status"] == "ERROR"
+    assert soft["status_description"] == "handled failure"
+    audit_events = [ev for ev in soft.get("events", []) if ev["name"] == "sqwakvox.audit"]
+    assert len(audit_events) == 1
+    assert audit_events[0]["attributes"]["audit.document_id"] == "doc.pdf"
+    assert audit_events[0]["attributes"]["audit.operation"] == "user_query"
 
 
 def test_json_file_span_exporter_failure_handling(tmp_path: Path) -> None:

@@ -104,32 +104,39 @@ class WorkerManager:
             "--no-beat",  # only one beat scheduler may run machine-wide
         ]
 
+        stream_to_stderr = bool(os.environ.get("K_SERVICE", "").strip()) or (
+            os.environ.get("SQWAKVOX_WORKER_LOG_STDERR", "").strip().lower()
+            in ("1", "true", "yes", "on")
+        )
+
         log_path = self._log_dir / f"worker_{queue}.log"
         log_fh = None
-        try:
-            log_fh = log_path.open("ab")
-        except OSError:
-            logger.warning("Could not open worker log file %s", log_path)
+        if not stream_to_stderr:
+            try:
+                log_fh = log_path.open("ab")
+            except OSError:
+                logger.warning("Could not open worker log file %s", log_path)
 
         try:
             proc = subprocess.Popen(
                 argv,
-                stdout=log_fh,
-                stderr=log_fh,
+                stdout=sys.stderr if stream_to_stderr else log_fh,
+                stderr=sys.stderr if stream_to_stderr else log_fh,
                 stdin=subprocess.DEVNULL,
             )
         except OSError as exc:
             logger.error("Failed to spawn worker for queue %s: %s", queue, exc)
+            return False
+        finally:
             if log_fh is not None:
                 log_fh.close()
-            return False
 
         self._workers[queue] = proc
         logger.info(
             "Spawned managed worker pid=%d queue=%s (log: %s)",
             proc.pid,
             queue,
-            log_path,
+            "stderr" if stream_to_stderr else log_path,
         )
         return True
 

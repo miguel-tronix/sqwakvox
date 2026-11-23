@@ -204,9 +204,14 @@ def _get_redis_checkpointer() -> Any | None:
         with _checkpointer_lock:
             if _redis_checkpointer is None:
                 try:
+                    from sqwakvox import storage
                     from sqwakvox.backend.redis_checkpointer import RedisCheckpointer
 
-                    saver: Any = RedisCheckpointer(redis_url=MEMORY_REDIS_URL)
+                    backup_dir = storage.checkpoints_dir()
+                    saver: Any = RedisCheckpointer(
+                        redis_url=MEMORY_REDIS_URL,
+                        backup_dir=backup_dir,
+                    )
                 except Exception as exc:
                     logger.warning(
                         "Redis memory checkpointer unavailable (%s); agent will run stateless",
@@ -214,7 +219,11 @@ def _get_redis_checkpointer() -> Any | None:
                     )
                     return None
                 _redis_checkpointer = saver
-                logger.info("Redis conversation memory enabled (%s)", MEMORY_REDIS_URL)
+                logger.info(
+                    "Redis conversation memory enabled (%s, backup_dir=%s)",
+                    MEMORY_REDIS_URL,
+                    backup_dir,
+                )
     return _redis_checkpointer
 
 
