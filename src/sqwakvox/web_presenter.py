@@ -213,7 +213,9 @@ class WebPresenter:
             filename = Path(upload.filename).name
             if not filename:
                 return JSONResponse({"ok": False, "error": "Invalid filename."}, status_code=400)
-            uploads_dir = Path.home() / ".sqwakvox" / "uploads"
+            from sqwakvox import storage
+
+            uploads_dir = storage.uploads_dir()
             uploads_dir.mkdir(parents=True, exist_ok=True)
             target = uploads_dir / filename
             try:
@@ -235,8 +237,7 @@ class WebPresenter:
                 self._event_stream(since_seq),
                 media_type="text/event-stream",
                 headers={
-                    "Cache-Control": "no-cache",
-                    "Connection": "keep-alive",
+                    "Cache-Control": "no-cache, no-transform",
                     "X-Accel-Buffering": "no",
                 },
             )
@@ -244,6 +245,7 @@ class WebPresenter:
         routes: list[BaseRoute] = [
             Route("/", home),
             Route("/healthz", healthz),
+            Route("/api/health", healthz),
             Route("/api/tools", api_tools),
             Route("/api/call", api_call, methods=["POST"]),
             Route("/api/upload", api_upload, methods=["POST"]),
@@ -263,6 +265,20 @@ class WebPresenter:
                 self.session.publish_session_clear()
             with contextlib.suppress(Exception):
                 self.session.close()
+            # Snapshot local SQLite MCP database if durable state dir is mounted.
+            with contextlib.suppress(Exception):
+                from sqwakvox import storage
+
+                snap_dir = storage.state_snapshot_dir()
+                mcp_db = Path("sqwakvox_mcp.db")
+                if snap_dir is not None and mcp_db.is_file():
+                    storage.snapshot_sqlite(mcp_db, snap_dir / "sqwakvox_mcp.db")
+            # Flush buffered spans on ASGI shutdown (e.g. Cloud Run SIGTERM)
+            # without permanently tearing down the global provider during tests.
+            with contextlib.suppress(Exception):
+                from sqwakvox.telemetry import flush_telemetry
+
+                flush_telemetry()
 
         middleware: list[Middleware] = []
         if not self.allow_remote:
@@ -412,6 +428,15 @@ def main() -> None:
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+
+    import atexit
+
+    from sqwakvox.telemetry import setup_telemetry, shutdown_telemetry
+
+    tm = setup_telemetry(role="web")
+    atexit.register(shutdown_telemetry)
+    logger.info("Sqwakvox web telemetry initialized (exporter=%s)", tm.exporter_name)
+
     token = "" if args.no_token else os.environ.get("SQWAKVOX_WEB_TOKEN", "").strip()
     if not token and not args.no_token and args.host not in ("127.0.0.1", "localhost"):
         # Bind a strong token rather than exposing an open API on 0.0.0.0.
@@ -420,7 +445,10 @@ def main() -> None:
 
     presenter = WebPresenter(token=token, allow_remote=args.allow_remote)
     logger.info("Sqwakvox web presenter listening on http://%s:%d", args.host, args.port)
-    uvicorn.run(presenter.app, host=args.host, port=args.port, log_level="info")
+    try:
+        uvicorn.run(presenter.app, host=args.host, port=args.port, log_level="info")
+    finally:
+        shutdown_telemetry()
 
 
 if __name__ == "__main__":

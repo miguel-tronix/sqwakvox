@@ -25,14 +25,41 @@ workers and route everything to the queue consumed here::
 from __future__ import annotations
 
 import argparse
+import atexit
 import logging
+import os
 import sys
+from typing import Any
+
+from celery.signals import worker_process_init, worker_process_shutdown, worker_shutdown
 
 from sqwakvox.backend.celery_app import celery_app
 
 logger = logging.getLogger("sqwakvox")
 
 DEFAULT_QUEUE = "sqwakvox"
+
+
+def _register_telemetry_signals(queue: str) -> None:
+    """Wire Celery prefork lifecycle signals for fork-safe telemetry and shutdown flush."""
+    role = f"worker:{queue}"
+    os.environ.setdefault("SQWAKVOX_PROCESS_ROLE", role)
+
+    def _on_process_init(**_kwargs: Any) -> None:
+        from sqwakvox.telemetry import setup_telemetry
+
+        setup_telemetry(role=role, force=True)
+
+    def _on_shutdown(**_kwargs: Any) -> None:
+        from sqwakvox.telemetry import shutdown_telemetry
+
+        shutdown_telemetry()
+
+    # weak=False keeps local closures alive for the lifetime of the worker process.
+    worker_process_init.connect(_on_process_init, weak=False)
+    worker_process_shutdown.connect(_on_shutdown, weak=False)
+    worker_shutdown.connect(_on_shutdown, weak=False)
+    atexit.register(_on_shutdown)
 
 
 def main() -> None:
@@ -68,10 +95,10 @@ def main() -> None:
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
 
-    # Ensure telemetry is set up in the worker (for tracing spans).
-    from sqwakvox.telemetry import setup_telemetry
-
-    setup_telemetry()
+    # Initialize telemetry post-fork inside each Celery child process and flush
+    # cleanly on worker recycle or SIGTERM (avoids sharing a pre-fork GCS HTTP
+    # client across forked workers and prevents dropping buffered spans).
+    _register_telemetry_signals(args.queue)
 
     argv = [
         "worker",

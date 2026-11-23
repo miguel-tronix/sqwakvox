@@ -11,12 +11,12 @@ The index lives at ``~/.sqwakvox/swe/index.db`` (override with
 
 from __future__ import annotations
 
-import os
 import re
 import sqlite3
 from pathlib import Path
 from typing import Any
 
+from sqwakvox import storage
 from sqwakvox.models import StructuredDocument
 
 #: Chunk targets (characters).  ~3k chars ≈ 750 tokens — comfortably under
@@ -31,13 +31,23 @@ CONTEXT_CHUNKS = 3
 
 def index_dir() -> Path:
     """Directory holding the SQLite retrieval index (env-overridable)."""
-    override = os.environ.get("SQWAKVOX_SWE_INDEX_DIR")
-    return Path(override) if override else Path.home() / ".sqwakvox" / "swe"
+    return storage.swe_index_dir()
 
 
 def index_path() -> Path:
     """Path to the SQLite retrieval index."""
     return index_dir() / "index.db"
+
+
+def _snapshot_path() -> Path | None:
+    snap_dir = storage.state_snapshot_dir()
+    return (snap_dir / "index.db") if snap_dir is not None else None
+
+
+def _persist_snapshot() -> None:
+    dest = _snapshot_path()
+    if dest is not None:
+        storage.snapshot_sqlite(index_path(), dest)
 
 
 # --------------------------------------------------------------------------- #
@@ -112,6 +122,10 @@ def chunk_markdown(
 def _connect() -> sqlite3.Connection:
     path = index_path()
     path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.exists():
+        snap = _snapshot_path()
+        if snap is not None and snap.is_file():
+            storage.restore_sqlite(snap, path)
     con = sqlite3.connect(str(path))
     con.execute(
         "CREATE VIRTUAL TABLE IF NOT EXISTS doc_chunks USING fts5("
@@ -131,9 +145,10 @@ def index_document(doc_id: str, chunks: list[str]) -> int:
                 (doc_id, f"{idx:06d}", chunk),
             )
         con.commit()
-        return len(chunks)
     finally:
         con.close()
+    _persist_snapshot()
+    return len(chunks)
 
 
 def delete_document(doc_id: str) -> None:
@@ -143,6 +158,7 @@ def delete_document(doc_id: str) -> None:
         con.commit()
     finally:
         con.close()
+    _persist_snapshot()
 
 
 def count_chunks(doc_id: str) -> int:

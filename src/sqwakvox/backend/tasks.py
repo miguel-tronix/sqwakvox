@@ -34,16 +34,23 @@ logger = logging.getLogger(__name__)
 MCP_SERVERS_ADAPTER = McpConnection
 
 
+_controller: AppController | None = None
+
+
 def _get_controller() -> AppController:
-    """Create a fresh controller per process.
+    """Return the process-wide :class:`AppController` singleton.
 
     The controller itself is cheap; the heavyweight ``DocumentConverter`` it
-    wraps is built lazily on the first ``convert_document`` call, so only the
-    shared Docling ingest worker ever instantiates it (see
-    :mod:`sqwakvox.worker_manager`).  Per-document agent workers never
-    construct Docling models at all.
+    wraps is built lazily on the first ``convert_document`` call and cached on
+    the controller instance, so only the shared Docling ingest worker ever
+    instantiates it (see :mod:`sqwakvox.worker_manager`) and reuses the warm
+    models across page slices instead of leaking a new converter per task.
+    Per-document agent workers never construct Docling models at all.
     """
-    return AppController()
+    global _controller
+    if _controller is None:
+        _controller = AppController()
+    return _controller
 
 
 def _is_revoked(self: Any) -> bool:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gc
 import json
 import logging
 import re
@@ -239,24 +240,83 @@ class AppController:
     ) -> StructuredDocument | None:
         tm = get_telemetry()
         start_time = time.monotonic()
-        with trace_span("sqwakvox.document.convert", {"source": source}) as span:
-            logger.info(f"Running Docling layout converter on {source}...")
+        range_label = f"{page_range[0]}-{page_range[1]}" if page_range is not None else "all"
+        with trace_span(
+            "sqwakvox.document.convert",
+            {"source": source, "page_range": range_label, "domain_id": domain_id},
+        ) as span:
+            logger.info(f"Running Docling layout converter on {source} (pages={range_label})...")
             try:
                 convert_kwargs: dict[str, Any] = {}
+                normalized_range: tuple[int, int] | None = None
                 if page_range is not None:
                     # Docling only OCRs/lays-out the requested slice, so a
                     # 100+ page PDF can be loaded a few pages at a time instead
                     # of blocking on one monolithic conversion that blows the
                     # Celery time limit.
-                    convert_kwargs["page_range"] = (int(page_range[0]), int(page_range[1]))
+                    normalized_range = (int(page_range[0]), int(page_range[1]))
+                    convert_kwargs["page_range"] = normalized_range
 
                 # Skip OCR when the PDF already carries a text layer; OCR is
                 # roughly a third of CPU-only conversion time and is pure
                 # waste on a digital document.  Scans fall through to the
                 # default converter, which OCRs as before.
                 skip_ocr = pdf_has_text_layer(source) and not self._converter_injected
-                converter = self.no_ocr_converter if skip_ocr else self.converter
                 span.set_attribute("ocr_skipped", skip_ocr)
+
+                # Check persistent converted-slice cache (when SQWAKVOX_DATA_DIR
+                # or SQWAKVOX_DOCLING_CACHE_DIR is configured) so repeat opens,
+                # page seeks, and retries return instantaneously instead of
+                # re-running Docling.
+                from sqwakvox import storage
+
+                cache_dir = storage.docling_cache_dir()
+                cache_key: str | None = None
+                source_path = Path(source)
+                if cache_dir is not None and not self._converter_injected and source_path.is_file():
+                    try:
+                        cache_key = storage.docling_cache_key(
+                            source_path,
+                            domain_id=domain_id,
+                            page_range=normalized_range,
+                            skip_ocr=skip_ocr,
+                        )
+                    except OSError as exc:
+                        logger.debug("Skipping Docling cache key for %s: %s", source, exc)
+
+                if cache_dir is not None and cache_key is not None:
+                    cached_payload = storage.load_cached_document(cache_dir, cache_key)
+                    if cached_payload is not None:
+                        try:
+                            cached_doc = StructuredDocument.model_validate(cached_payload)
+                            duration = time.monotonic() - start_time
+                            span.set_attribute("cache_hit", True)
+                            span.set_attribute("file_name", cached_doc.file_name)
+                            span.set_attribute("tables_count", len(cached_doc.tables))
+                            span.set_attribute(
+                                "markdown_length", len(cached_doc.raw_markdown or "")
+                            )
+                            span.set_attribute("duration_sec", duration)
+                            logger.info(
+                                "Docling cache hit for %s (pages=%s, %.3fs)",
+                                cached_doc.file_name,
+                                range_label,
+                                duration,
+                            )
+                            if tm.doc_ingest_counter:
+                                tm.doc_ingest_counter.add(
+                                    1, {"status": "cache_hit", "domain": domain_id}
+                                )
+                            if tm.doc_ingest_duration:
+                                tm.doc_ingest_duration.record(
+                                    duration, {"status": "cache_hit", "domain": domain_id}
+                                )
+                            return cached_doc
+                        except Exception as exc:
+                            logger.debug("Invalid cached Docling entry %s: %s", cache_key, exc)
+
+                span.set_attribute("cache_hit", False)
+                converter = self.no_ocr_converter if skip_ocr else self.converter
                 if skip_ocr:
                     logger.info("PDF has a text layer; skipping OCR for %s", source)
 
@@ -340,6 +400,9 @@ class AppController:
                 else:
                     pages_in_batch = total_pages
 
+                del result
+                gc.collect()
+
                 doc = StructuredDocument(
                     file_name=doc_name,
                     raw_markdown=doc_md,
@@ -353,6 +416,9 @@ class AppController:
                         "pages_in_batch": pages_in_batch,
                     },
                 )
+
+                if cache_dir is not None and cache_key is not None:
+                    storage.save_cached_document(cache_dir, cache_key, doc.model_dump())
 
                 duration = time.monotonic() - start_time
                 span.set_attribute("file_name", doc_name)
@@ -603,7 +669,11 @@ class AppController:
                 )
 
             except Exception as e:
+                from opentelemetry.trace import Status, StatusCode
+
                 logger.error("Agent execution exception: %s", e, exc_info=True)
+                span.record_exception(e)
+                span.set_status(Status(StatusCode.ERROR, str(e)))
                 result.success = False
                 result.error_message = str(e)
                 AuditLogger.log(

@@ -172,10 +172,13 @@ class LoadedDocument:
     paging_generation: int = 0
     #: Next slice index to load (0 is the initial parse result).
     next_batch: int = 0
-    #: Prefetched slices awaiting display, keyed by slice index.
+    #: Prefetched slices awaiting display, keyed by start page.
     batch_cache: dict[int, StructuredDocument] = field(default_factory=dict)
-    #: In-flight prefetch task handles, keyed by slice index.
+    #: In-flight prefetch task handles, keyed by start page.
     pending: dict[int, Any] = field(default_factory=dict)
+    #: Reservation events registered synchronously before submitting a prefetch
+    #: task so concurrent callers coalesce instead of queueing duplicate parses.
+    prefetch_events: dict[int, Any] = field(default_factory=dict)
 
     @property
     def file_name(self) -> str:

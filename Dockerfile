@@ -12,7 +12,11 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PORT=8080 \
     SQWAKVOX_CELERY_BROKER="redis://127.0.0.1:6379/0" \
     SQWAKVOX_CELERY_BACKEND="redis://127.0.0.1:6379/1" \
-    SQWAKVOX_MEMORY_REDIS_URL="redis://127.0.0.1:6379/2"
+    SQWAKVOX_MEMORY_REDIS_URL="redis://127.0.0.1:6379/2" \
+    SQWAKVOX_DOCLING_CONCURRENCY="1" \
+    SQWAKVOX_DOC_WORKER_CONCURRENCY="1" \
+    OMP_NUM_THREADS="2" \
+    MKL_NUM_THREADS="2"
 
 # System dependencies:
 # - redis-server: in-container broker, result backend, and conversation memory
@@ -50,9 +54,10 @@ RUN NO_CUDA_ARGS=$(grep -oE '^name = "(nvidia-[^"]+|cuda-[^"]+|triton|torch|torc
         torch==2.12.0 torchvision==0.27.0 \
     && rm -rf /tmp/uv-cache
 
-# 2. Copy application code, MCP config, and lightweight sample PDFs
+# 2. Copy application code, MCP config, bundled seed skills, and lightweight sample PDFs
 COPY src/ ./src/
 COPY mcp_servers.json ./mcp_servers.json
+COPY skills/ ./skills/
 COPY samples/ ./samples/
 COPY deploy/entrypoint.sh /usr/local/bin/entrypoint.sh
 
