@@ -267,6 +267,112 @@ def test_seek_page_past_the_last_page_is_rejected(session: DocSession, tmp_path:
     assert "last page" in result["error"]
 
 
+def test_concurrent_open_document_coalesces_into_single_parse(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("SQWAKVOX_MANAGED_WORKERS", "0")
+    parse_calls: list[tuple[str, Any]] = []
+
+    class CountingPresenter(FakePresenter):
+        async def parse_document(self, source: str, page_range: Any = None, **kw: Any) -> _Handle:
+            parse_calls.append((source, page_range))
+            return await super().parse_document(source, page_range=page_range, **kw)
+
+    slow_session = DocSession(presenter=CountingPresenter(delay=0.05), chat_log_dir=tmp_path)
+    try:
+        j1 = slow_session.open_document("/tmp/slow.pdf", "swe")
+        j2 = slow_session.open_document("/tmp/slow.pdf", "swe")
+        assert j1.job_id == j2.job_id
+        res = slow_session.wait_job(j1.job_id)
+        assert res["ok"] is True
+        assert len(parse_calls) == 1
+    finally:
+        slow_session.close()
+
+
+def test_concurrent_prefetch_and_load_more_do_not_duplicate_docling_tasks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("SQWAKVOX_MANAGED_WORKERS", "0")
+    parse_calls: list[Any] = []
+
+    class SlowPagingPresenter(FakePresenter):
+        async def parse_document(self, source: str, page_range: Any = None, **kw: Any) -> _Handle:
+            parse_calls.append(page_range)
+            return await super().parse_document(source, page_range=page_range, **kw)
+
+    pdf = tmp_path / "big.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n")
+
+    slow_session = DocSession(presenter=SlowPagingPresenter(delay=0.08), chat_log_dir=tmp_path)
+    try:
+        slow_session.open_document_and_wait(str(pdf))
+        # Immediately fire two concurrent load_more calls while the background
+        # prefetch for pages 11-20 is still inside ``await parse_document(...)``.
+        j1 = slow_session.load_more(str(pdf))
+        j2 = slow_session.load_more(str(pdf))
+        slow_session.wait_job(j1.job_id)
+        slow_session.wait_job(j2.job_id)
+        # Slice (11, 20) must have been submitted to Docling at most ONCE.
+        assert parse_calls.count((11, 20)) == 1
+    finally:
+        slow_session.close()
+
+
+def test_seek_page_revokes_abandoned_prefetch_tasks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("SQWAKVOX_MANAGED_WORKERS", "0")
+    cancelled_ids: list[str] = []
+    block_prefetch = asyncio.Event()
+
+    class BlockingHandle(_Handle):
+        def __init__(self, task_id: str, doc: Any) -> None:
+            super().__init__(doc)
+            self.task_id = task_id
+
+        async def wait(self, timeout: float | None = None) -> TaskStatus:
+            await block_prefetch.wait()
+            return self.status
+
+    class CancelTrackingPresenter(FakePresenter):
+        def __init__(self) -> None:
+            super().__init__()
+            self._n = 0
+
+        async def parse_document(self, source: str, page_range: Any = None, **kw: Any) -> _Handle:
+            self._n += 1
+            if page_range == (11, 20):
+                return BlockingHandle(f"task-prefetch-{self._n}", _doc(Path(source).name))
+            return await super().parse_document(source, page_range=page_range, **kw)
+
+        async def cancel_task(self, task_id: str) -> bool:
+            cancelled_ids.append(task_id)
+            block_prefetch.set()
+            return True
+
+    pdf = tmp_path / "big.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n")
+
+    sess = DocSession(presenter=CancelTrackingPresenter(), chat_log_dir=tmp_path)
+    try:
+        sess.open_document_and_wait(str(pdf))
+        # Give the background prefetch a moment to register its BlockingHandle.
+        import time
+
+        deadline = time.monotonic() + 2.0
+        while time.monotonic() < deadline and not sess.loaded_documents[str(pdf)].pending:
+            time.sleep(0.01)
+        assert sess.loaded_documents[str(pdf)].pending
+
+        res = sess.seek_page_and_wait(str(pdf), 20)
+        assert res["ok"] is True
+        assert any(tid.startswith("task-prefetch-") for tid in cancelled_ids)
+    finally:
+        block_prefetch.set()
+        sess.close()
+
+
 # ---------------------------------------------------------------- chat
 
 
@@ -386,6 +492,47 @@ def test_a_failed_job_records_its_error(session: DocSession) -> None:
     assert session.documents() == []
     errors = [e for e in session.events_since() if e.kind == "error"]
     assert any("docling exploded" in e.data.get("message", "") for e in errors)
+
+
+def test_failed_parse_marks_job_event_as_failure(session: DocSession) -> None:
+    """When parse_document completes with FAILURE, the job event must be 'failure'."""
+
+    async def fail_parse(on_complete: Any = None, **_kw: Any) -> _Handle:
+        err = "Worker exited prematurely: signal 9 (SIGKILL) Job: 0."
+        if on_complete is not None:
+            on_complete(TaskStatus.FAILURE, err)
+        h = _Handle(None, status=TaskStatus.FAILURE)
+        h.error = err
+        return h
+
+    session.presenter.parse_document = fail_parse  # type: ignore[method-assign]
+    result = session.open_document_and_wait("/tmp/report.pdf")
+    assert result["ok"] is False
+    job_events = [e.data["job"] for e in session.events_since() if e.kind == "job"]
+    assert job_events[-1]["state"] == "failure"
+    assert "SIGKILL" in (job_events[-1]["error"] or "")
+
+
+def test_paged_pdf_prefetches_only_one_slice_ahead(
+    session: DocSession, tmp_path: Path
+) -> None:
+    """Opening a paged PDF must prefetch only one slice ahead, not the whole book."""
+    pdf = tmp_path / "book.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n")
+    ranges: list[tuple[int, int] | None] = []
+    orig_parse = session.presenter.parse_document
+
+    async def tracking_parse(*args: Any, **kwargs: Any) -> _Handle:
+        ranges.append(kwargs.get("page_range"))
+        return await orig_parse(*args, **kwargs)
+
+    session.presenter.parse_document = tracking_parse  # type: ignore[method-assign]
+    session.open_document_and_wait(str(pdf))
+    # Drain any background prefetch job queued by _open_document.
+    for j in list(session.jobs()):
+        session.wait_job(j["job_id"])
+
+    assert ranges == [(1, 10), (11, 20)]
 
 
 # --------------------------------------------------------------------- events

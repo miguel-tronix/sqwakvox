@@ -50,12 +50,12 @@ DOCLING_QUEUE = "sqwakvox.docling"
 #: Concurrency used for the shared Docling ingest worker.  One document
 #: conversion can run per child process; a small pool lets several tabs
 #: parse in parallel while keeping total Docling model instances bounded.
-DOCLING_WORKER_CONCURRENCY = 2
+DOCLING_WORKER_CONCURRENCY = int(os.environ.get("SQWAKVOX_DOCLING_CONCURRENCY", "2"))
 
 #: Concurrency used for spawned per-document workers.  One document's tasks
 #: are mostly sequential (data store -> cross-validate -> agent), so a small
 #: pool is enough; this keeps total CPU usage sane with many tabs open.
-DOC_WORKER_CONCURRENCY = 2
+DOC_WORKER_CONCURRENCY = int(os.environ.get("SQWAKVOX_DOC_WORKER_CONCURRENCY", "2"))
 
 
 def managed_workers_enabled() -> bool:
@@ -104,32 +104,39 @@ class WorkerManager:
             "--no-beat",  # only one beat scheduler may run machine-wide
         ]
 
+        stream_to_stderr = bool(os.environ.get("K_SERVICE", "").strip()) or (
+            os.environ.get("SQWAKVOX_WORKER_LOG_STDERR", "").strip().lower()
+            in ("1", "true", "yes", "on")
+        )
+
         log_path = self._log_dir / f"worker_{queue}.log"
         log_fh = None
-        try:
-            log_fh = log_path.open("ab")
-        except OSError:
-            logger.warning("Could not open worker log file %s", log_path)
+        if not stream_to_stderr:
+            try:
+                log_fh = log_path.open("ab")
+            except OSError:
+                logger.warning("Could not open worker log file %s", log_path)
 
         try:
             proc = subprocess.Popen(
                 argv,
-                stdout=log_fh,
-                stderr=log_fh,
+                stdout=sys.stderr if stream_to_stderr else log_fh,
+                stderr=sys.stderr if stream_to_stderr else log_fh,
                 stdin=subprocess.DEVNULL,
             )
         except OSError as exc:
             logger.error("Failed to spawn worker for queue %s: %s", queue, exc)
+            return False
+        finally:
             if log_fh is not None:
                 log_fh.close()
-            return False
 
         self._workers[queue] = proc
         logger.info(
             "Spawned managed worker pid=%d queue=%s (log: %s)",
             proc.pid,
             queue,
-            log_path,
+            "stderr" if stream_to_stderr else log_path,
         )
         return True
 

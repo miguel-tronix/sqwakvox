@@ -223,8 +223,10 @@ class DocSession:
         self.doc_context: str = ""
 
         # --- chat ---
+        from sqwakvox import storage
+
         self.chat_histories: dict[str, list[dict[str, Any]]] = {}
-        self._chat_log_dir = chat_log_dir or (Path.home() / ".sqwakvox_chat_logs")
+        self._chat_log_dir = chat_log_dir or storage.chat_log_dir()
         with contextlib.suppress(OSError):
             self._chat_log_dir.mkdir(parents=True, exist_ok=True)
 
@@ -234,6 +236,7 @@ class DocSession:
 
         # --- jobs / events ---
         self._jobs: dict[str, Job] = {}
+        self._inflight_opens: dict[tuple[str, str, str], Job] = {}
         self._sinks: list[EventSink] = []
         self._seq = 0
         self._events_log: list[SessionEvent] = []
@@ -283,7 +286,11 @@ class DocSession:
             self._emit(EVENT_JOB, {"job": job.as_dict()})
             self._emit(EVENT_ERROR, {"job_id": job.job_id, "message": job.error})
             return dict(job.result)
-        job.state = JOB_SUCCESS
+        if isinstance(result, dict) and result.get("ok") is False:
+            job.state = JOB_FAILURE
+            job.error = str(result.get("error") or "Job failed.")
+        else:
+            job.state = JOB_SUCCESS
         job.result = result
         self._emit(EVENT_JOB, {"job": job.as_dict()})
         return dict(result)
@@ -745,12 +752,33 @@ class DocSession:
         source = source.strip()
         if not source:
             raise ValueError("source must not be empty")
+        normalized_opts = options or {}
+        open_key = (source, domain_id, json.dumps(normalized_opts, sort_keys=True, default=str))
+        existing = self._inflight_opens.get(open_key)
+        if existing is not None and existing.state == JOB_RUNNING:
+            logger.info(
+                "Coalescing duplicate open_document request for %s onto job %s",
+                source,
+                existing.job_id,
+            )
+            return existing
+
         self._doc_domains[source] = domain_id
-        return self._submit(
-            self._open_document(source, domain_id, options or {}),
+
+        async def _tracked_open() -> dict[str, Any]:
+            try:
+                return await self._open_document(source, domain_id, normalized_opts)
+            finally:
+                if self._inflight_opens.get(open_key) is job:
+                    self._inflight_opens.pop(open_key, None)
+
+        job = self._submit(
+            _tracked_open(),
             kind="open_document",
             source=source,
         )
+        self._inflight_opens[open_key] = job
+        return job
 
     def open_document_and_wait(
         self,
@@ -992,15 +1020,39 @@ class DocSession:
         job = self.seek_page(source, page, window)
         return self.wait_job(job.job_id, timeout=timeout)
 
+    async def _cancel_pending_prefetches(self, loaded: LoadedDocument) -> None:
+        """Revoke all in-flight prefetch tasks for *loaded* and unblock waiters."""
+        old_handles = list(loaded.pending.values())
+        loaded.pending.clear()
+        old_events = list(loaded.prefetch_events.values())
+        loaded.prefetch_events.clear()
+        for ev in old_events:
+            with contextlib.suppress(Exception):
+                ev.set()
+        cancel_fn = getattr(self.presenter, "cancel_task", None)
+        if callable(cancel_fn):
+            for handle in old_handles:
+                task_id = getattr(handle, "task_id", "")
+                if task_id:
+                    with contextlib.suppress(Exception):
+                        await cancel_fn(task_id)
+
     async def _prefetch(self, source: str, start_page: int) -> dict[str, Any]:
         """Cache the PDF slice starting at *start_page* (one slice ahead)."""
         loaded = self.loaded_documents.get(source)
         if loaded is None or not loaded.is_paged:
             return {"ok": False, "error": "Document is not paged."}
         start_page = max(1, int(start_page))
-        if start_page in loaded.pending or start_page in loaded.batch_cache:
+        if start_page in loaded.batch_cache:
             return {"ok": True, "cached": True}
         if loaded.total_pages and start_page > loaded.total_pages:
+            return {"ok": True, "cached": True}
+
+        # Coalesce onto an already-reserved/in-flight prefetch for the exact
+        # same start_page instead of queueing a duplicate Docling Celery task.
+        existing_event = loaded.prefetch_events.get(start_page)
+        if existing_event is not None:
+            await existing_event.wait()
             return {"ok": True, "cached": True}
 
         start = start_page
@@ -1008,6 +1060,13 @@ class DocSession:
         if loaded.total_pages:
             end = min(end, loaded.total_pages)
         generation = loaded.paging_generation
+
+        # Reserve synchronously BEFORE yielding at ``await parse_document(...)``
+        # so a concurrent ``load_more`` or background prefetch never submits a
+        # second identical task while the first submission is in flight.
+        done_event = asyncio.Event()
+        loaded.prefetch_events[start] = done_event
+        handle: Any = None
 
         def on_complete(status: TaskStatus, payload: Any) -> None:
             # A seek moves the window; discard slices from the old one.
@@ -1018,28 +1077,32 @@ class DocSession:
                 loaded.batch_cache[start] = payload
             loaded.pending.pop(start, None)
 
-        handle = await self.presenter.parse_document(
-            source=source,
-            domain_id=loaded.domain_id,
-            page_range=(start, end),
-            queue=self.docling_queue(),
-            on_complete=on_complete,
-        )
-        if generation != loaded.paging_generation:
-            return {"ok": True, "stale": True}
-        loaded.pending[start] = handle
-        await handle.wait()
-        loaded.pending.pop(start, None)
-        if generation != loaded.paging_generation:
-            return {"ok": True, "stale": True}
-        if start in loaded.batch_cache:
-            # Chain the next prefetch so the cache stays one slice ahead.
-            self._submit(
-                self._prefetch(source, start + loaded.batch_size),
-                kind="prefetch",
+        try:
+            handle = await self.presenter.parse_document(
                 source=source,
+                domain_id=loaded.domain_id,
+                page_range=(start, end),
+                queue=self.docling_queue(),
+                on_complete=on_complete,
             )
-        return {"ok": True, "start_page": start, "pages": [start, end]}
+            if generation != loaded.paging_generation:
+                cancel_fn = getattr(self.presenter, "cancel_task", None)
+                task_id = getattr(handle, "task_id", "")
+                if callable(cancel_fn) and task_id:
+                    with contextlib.suppress(Exception):
+                        await cancel_fn(task_id)
+                return {"ok": True, "stale": True}
+            loaded.pending[start] = handle
+            await handle.wait()
+            if generation != loaded.paging_generation:
+                return {"ok": True, "stale": True}
+            return {"ok": True, "start_page": start, "pages": [start, end]}
+        finally:
+            if handle is not None and loaded.pending.get(start) is handle:
+                loaded.pending.pop(start, None)
+            if loaded.prefetch_events.get(start) is done_event:
+                loaded.prefetch_events.pop(start, None)
+            done_event.set()
 
     async def _load_more(self, source: str) -> dict[str, Any]:
         """Reveal the next prefetched (or freshly fetched) PDF slice."""
@@ -1052,7 +1115,10 @@ class DocSession:
 
         start_page = loaded.rendered_pages + 1
         if start_page not in loaded.batch_cache:
-            if start_page in loaded.pending:
+            existing_event = loaded.prefetch_events.get(start_page)
+            if existing_event is not None:
+                await existing_event.wait()
+            elif start_page in loaded.pending:
                 await loaded.pending[start_page].wait()
             else:
                 prefetch = await self._prefetch(source, start_page)
@@ -1076,6 +1142,13 @@ class DocSession:
         if source == self._active_source:
             self.doc_context = get_domain(loaded.domain_id).context_for(loaded.structured)
         self._emit(EVENT_RENDER, {"source": source, "page_range": self.page_info(source)})
+        # Keep one PDF slice ahead of what the user has revealed.
+        if not loaded.total_pages or loaded.rendered_pages < loaded.total_pages:
+            self._submit(
+                self._prefetch(source, loaded.rendered_pages + 1),
+                kind="prefetch",
+                source=source,
+            )
         return {
             "ok": True,
             "pages_added": pages_in_batch,
@@ -1100,9 +1173,10 @@ class DocSession:
             }
         window = max(1, window or loaded.batch_size or self.pdf_batch_size)
 
-        # Drop the old window and stop any prefetch chain still running for it.
+        # Drop the old window and revoke any prefetch tasks still running for it
+        # so abandoned conversions do not clog the shared Docling worker.
         loaded.paging_generation += 1
-        loaded.pending.clear()
+        await self._cancel_pending_prefetches(loaded)
         loaded.batch_cache.clear()
         loaded.paging_complete = False
         loaded.batch_size = window
@@ -1129,6 +1203,13 @@ class DocSession:
         page_range = self.page_info(source)
         self._emit(EVENT_RENDER, {"source": source, "page_range": page_range})
         self._emit(EVENT_DOCUMENT, {"event": "seeked", "document": self.documents()})
+        # Keep one PDF slice ahead of the newly seeked window.
+        if not loaded.total_pages or loaded.rendered_pages < loaded.total_pages:
+            self._submit(
+                self._prefetch(source, loaded.rendered_pages + 1),
+                kind="prefetch",
+                source=source,
+            )
         return {
             "ok": True,
             "source": source,

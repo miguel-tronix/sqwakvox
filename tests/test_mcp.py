@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import timedelta
 
 import pytest
@@ -34,11 +35,46 @@ class TestToConnection:
 
         assert conn["env"] == {"A": "B"}
 
-    def test_stdio_env_omitted_when_none(self) -> None:
+    def test_stdio_env_omitted_when_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Omitting env lets the adapters layer inherit the parent environment."""
+        for key in list(os.environ):
+            if key.startswith(("SQWAKVOX_TELEMETRY_", "OTEL_")) or key in {
+                "K_SERVICE",
+                "K_REVISION",
+                "K_CONFIGURATION",
+                "GOOGLE_APPLICATION_CREDENTIALS",
+                "GOOGLE_CLOUD_PROJECT",
+                "SQWAKVOX_DATA_DIR",
+                "SQWAKVOX_SKILLS_DIR",
+                "SQWAKVOX_SWE_INDEX_DIR",
+                "SQWAKVOX_STATE_DIR",
+                "SQWAKVOX_MCP_READ_ONLY",
+            }:
+                monkeypatch.delenv(key, raising=False)
         conn = to_connection(MCPStdio(command="x", args=[]))
 
         assert "env" not in conn
+
+    def test_stdio_forwards_telemetry_and_cloud_run_env(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("SQWAKVOX_TELEMETRY_BUCKET", "my-bucket")
+        monkeypatch.setenv("SQWAKVOX_TELEMETRY_PREFIX", "telemetry/spans")
+        monkeypatch.setenv("SQWAKVOX_DATA_DIR", "/data")
+        monkeypatch.setenv("SQWAKVOX_SKILLS_DIR", "/data/skills")
+        monkeypatch.setenv("K_SERVICE", "sqwakvox-web")
+        monkeypatch.setenv("UNRELATED_SECRET", "do-not-forward")
+
+        conn = to_connection(
+            MCPStdio(command="x", args=[], env={"SQWAKVOX_TELEMETRY_PREFIX": "override"})
+        )
+
+        assert conn["env"]["SQWAKVOX_TELEMETRY_BUCKET"] == "my-bucket"
+        assert conn["env"]["SQWAKVOX_TELEMETRY_PREFIX"] == "override"
+        assert conn["env"]["SQWAKVOX_DATA_DIR"] == "/data"
+        assert conn["env"]["SQWAKVOX_SKILLS_DIR"] == "/data/skills"
+        assert conn["env"]["K_SERVICE"] == "sqwakvox-web"
+        assert "UNRELATED_SECRET" not in conn["env"]
 
     def test_sse_transport(self) -> None:
         conn = to_connection(MCPSse(url="http://h/sse", headers={"X": "1"}))

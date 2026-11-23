@@ -317,7 +317,6 @@ class AuditLogger:
         risk_score: float = 0.0,
         input_text: str | None = None,
     ) -> None:
-        cls._ensure_log_dir()
         entry = {
             "timestamp": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "document_id": document_id,
@@ -330,7 +329,42 @@ class AuditLogger:
             entry["input_query_hash"] = hashlib.sha256(input_text.encode("utf-8")).hexdigest()
 
         try:
+            cls._ensure_log_dir()
             with cls.LOG_PATH.open("a") as f:
                 f.write(json.dumps(entry) + "\n")
         except OSError as e:
             logger.error(f"Failed to write audit log: {e}")
+
+        cls._emit_telemetry_audit(entry)
+
+    @classmethod
+    def _emit_telemetry_audit(cls, entry: dict[str, Any]) -> None:
+        """Mirror audit entries into OpenTelemetry so Cloud Run persists them to GCS.
+
+        When called inside an active recording span (e.g. ``sqwakvox.agent.execute``),
+        attaches a ``sqwakvox.audit`` span event. When no span is active and a
+        remote exporter (such as ``gcs`` or ``otlp``) is configured, emits a
+        dedicated ``sqwakvox.audit`` span so ephemeral container disk does not
+        lose audit history.
+        """
+        from opentelemetry import trace as otel_trace
+
+        attrs: dict[str, Any] = {
+            "audit.document_id": str(entry.get("document_id", "")),
+            "audit.operation": str(entry.get("operation", "")),
+            "audit.action": str(entry.get("action", "")),
+            "audit.risk_score": float(entry.get("risk_score", 0.0)),
+            "audit.guardrail_checks": json.dumps(entry.get("guardrail_checks", {}), default=str),
+        }
+        if "input_query_hash" in entry:
+            attrs["audit.input_query_hash"] = str(entry["input_query_hash"])
+
+        current = otel_trace.get_current_span()
+        if current is not None and current.is_recording():
+            current.add_event("sqwakvox.audit", attributes=attrs)
+            return
+
+        tm = get_telemetry()
+        if tm.is_enabled and tm.exporter_name in ("gcs", "otlp"):
+            with trace_span("sqwakvox.audit", attrs):
+                pass

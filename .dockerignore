@@ -1,0 +1,38 @@
+# Virtual environments & caches
+.venv/
+__pycache__/
+*.py[cod]
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+dist/
+build/
+*.egg-info/
+node_modules/
+
+# Git & IDE
+.git/
+.github/
+.vscode/
+.agents/
+.pi/
+
+# Runtime logs, databases, and worker state
+*.log
+*.jsonl
+celerybeat-schedule*
+sqwakvox_workers/
+sqwakvox_mcp.db*
+run_worker_error.txt
+
+# Docs, screenshots, and large local sample books
+screenshots/
+*.svg
+plans/
+tf/
+tests/
+samples/*
+!samples/fs023-sample-financial-statements.pdf
+!samples/itg.pdf
+!samples/banks.txt

@@ -292,3 +292,39 @@ async def test_execute_agent_rehydrates_agent_result_with_filtered_keys() -> Non
         assert not hasattr(payload, "extra_unrecognized_key")
     finally:
         await presenter.close()
+
+
+@pytest.mark.asyncio
+async def test_poll_emits_started_progress_only_once() -> None:
+    """_poll should notify TaskStatus.STARTED once, not on every 0.5s tick."""
+    presenter = Presenter()
+    try:
+        result = MagicMock(spec=AsyncResult)
+        result.id = "task-progress-once"
+        polls = 0
+
+        def is_ready() -> bool:
+            nonlocal polls
+            polls += 1
+            if polls > 3:
+                result.state = "SUCCESS"
+                return True
+            result.state = "STARTED"
+            return False
+
+        result.ready.side_effect = is_ready
+        result.get.return_value = {"ok": True}
+
+        handle = TaskHandle(task_id="task-progress-once", task_name="convert_document")
+        progress_events: list[TaskStatus] = []
+        with patch("sqwakvox.presenter.POLL_INTERVAL", 0.01):
+            await presenter._poll(
+                result,
+                handle=handle,
+                on_progress=lambda status, _payload: progress_events.append(status),
+                on_complete=None,
+                on_error=None,
+            )
+        assert progress_events == [TaskStatus.STARTED]
+    finally:
+        await presenter.close()

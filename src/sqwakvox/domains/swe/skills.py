@@ -9,9 +9,10 @@ by the assistant persist on disk in a standard, reusable format.
 
 from __future__ import annotations
 
-import os
 import re
 from pathlib import Path
+
+from sqwakvox import storage
 
 SKILL_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 MAX_SKILL_CHARS = 32_000
@@ -19,9 +20,7 @@ MAX_SKILL_CHARS = 32_000
 
 def skills_root(domain_id: str = "swe") -> Path:
     """Return the writable skills root for *domain_id*."""
-    override = os.environ.get("SQWAKVOX_SKILLS_DIR")
-    base = Path(override) if override else Path.cwd() / "skills"
-    return base / domain_id
+    return storage.skills_base_dir() / domain_id
 
 
 def skill_path(domain_id: str, name: str) -> Path:

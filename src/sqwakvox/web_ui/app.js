@@ -21,6 +21,10 @@ const state = {
   pendingChat: 0,
   view: "document",
   eventSource: null,
+  connLive: false,
+  backendReset: false,
+  lastUploadedFile: null,
+  lastUploadedPath: "",
   pageInfo: null,
   chatCollapsed: localStorage.getItem("sqwakvox_chat_collapsed") === "1",
 };
@@ -90,7 +94,11 @@ function setChatCollapsed(collapsed) {
 
 async function boot() {
   try {
-    const health = await (await fetch("/healthz", { headers: headers() })).json();
+    const health = await (await fetch("/api/health", { headers: headers() })).json();
+    if (!health.auth_required && state.token) {
+      state.token = "";
+      sessionStorage.removeItem("sqwakvox_token");
+    }
     if (health.auth_required && !state.token) {
       showGate();
       return;
@@ -179,15 +187,48 @@ async function refreshSkills() {
   }
 }
 
+function handleBackendReset(session) {
+  state.backendReset = true;
+  state.lastSeq = session?.seq || 0;
+  state.documents = [];
+  state.activeSource = null;
+  state.renderedSource = null;
+  state.currentJob = null;
+  state.pageInfo = null;
+  $("btn-cancel").disabled = true;
+  $("chat-log").querySelectorAll(".msg.pending").forEach((n) => n.remove());
+  renderDocuments();
+  renderMcpServers(session?.mcp_servers || []);
+  $("pager").replaceChildren();
+  setStatus("session reset after inactivity — click Load & Parse to reload document");
+  toast("Backend restarted after inactivity. On-screen content preserved.");
+}
+
 async function refreshSession() {
   const data = await callTool("sqwakvox_presenter_status");
-  state.session = data.session;
-  state.documents = data.session.documents || [];
-  if (data.session.active_source || !state.activeSource) {
-    state.activeSource = data.session.active_source;
+  const session = data.session;
+  if (!session) return;
+  const hadRenderedContent = Boolean(state.renderedSource);
+  const serverReset =
+    (typeof session.seq === "number" && session.seq < state.lastSeq) ||
+    (hadRenderedContent && (!session.documents || session.documents.length === 0));
+  if (typeof session.seq === "number") {
+    state.lastSeq = serverReset ? session.seq : Math.max(state.lastSeq, session.seq);
+  }
+  state.session = session;
+  if (serverReset && hadRenderedContent) {
+    handleBackendReset(session);
+    return;
+  }
+  if (session.documents && session.documents.length > 0) {
+    state.backendReset = false;
+  }
+  state.documents = session.documents || [];
+  if (session.active_source || !state.activeSource) {
+    state.activeSource = session.active_source;
   }
   renderDocuments();
-  renderMcpServers(data.session.mcp_servers || []);
+  renderMcpServers(session.mcp_servers || []);
   renderPager();
   if (state.activeSource !== state.renderedSource) {
     await Promise.all([renderDocument(state.activeSource), renderChat(state.activeSource)]);
@@ -300,15 +341,32 @@ function renderPager() {
   if (total) input.max = String(total);
   const go = el("button", { type: "submit", textContent: "Go", title: "Go to page" });
   form.append(input, go);
-  form.onsubmit = (event) => {
+  form.onsubmit = async (event) => {
     event.preventDefault();
-    seekToPage(doc.source, input.value);
+    if (go.disabled) return;
+    go.disabled = true;
+    try {
+      await seekToPage(doc.source, input.value);
+    } finally {
+      go.disabled = false;
+    }
   };
   pager.append(form);
 
   const more = el("button", { textContent: info.complete ? "All pages ✓" : "Load more ↓" });
   more.disabled = Boolean(info.complete);
-  more.onclick = () => callTool("sqwakvox_presenter_load_more", { source: doc.source }).catch((e) => toast(e.message, true));
+  more.onclick = async () => {
+    if (more.disabled) return;
+    more.disabled = true;
+    more.textContent = "Loading…";
+    try {
+      await callTool("sqwakvox_presenter_load_more", { source: doc.source });
+    } catch (e) {
+      toast(e.message, true);
+    } finally {
+      renderPager();
+    }
+  };
   pager.append(more);
 }
 
@@ -351,13 +409,45 @@ async function activateDocument(source) {
   await refreshSession().catch(() => {});
 }
 
+async function uploadFileToServer(file) {
+  const formData = new FormData();
+  formData.append("file", file);
+  const response = await fetch("/api/upload", {
+    method: "POST",
+    headers: headers(false),
+    body: formData,
+  });
+  const data = await response.json().catch(() => ({}));
+  if (response.status === 401) {
+    showGate("Token rejected. Try again.");
+    throw new Error("unauthorized");
+  }
+  if (!data.ok || !data.path) {
+    throw new Error(data.error || "File upload failed");
+  }
+  state.lastUploadedFile = file;
+  state.lastUploadedPath = data.path;
+  state.backendReset = false;
+  return data;
+}
+
 async function openDocument() {
-  const source = $("source").value.trim();
+  let source = $("source").value.trim();
   if (!source) return;
   const button = $("btn-open");
   button.disabled = true;
-  setStatus(`ingesting ${source}…`);
   try {
+    if (
+      state.backendReset &&
+      state.lastUploadedFile &&
+      source === state.lastUploadedPath
+    ) {
+      setStatus(`re-uploading ${state.lastUploadedFile.name}…`);
+      const uploaded = await uploadFileToServer(state.lastUploadedFile);
+      source = uploaded.path;
+      $("source").value = source;
+    }
+    setStatus(`ingesting ${source}…`);
     const job = await callTool("sqwakvox_presenter_open_document", {
       source,
       domain_id: $("domain").value,
@@ -365,9 +455,12 @@ async function openDocument() {
     });
     state.currentJob = job.job_id;
     $("btn-cancel").disabled = false;
+    ensureFallbackPoll();
   } catch (error) {
-    toast(error.message, true);
-    setStatus("ingest failed");
+    if (error.message !== "unauthorized") {
+      toast(error.message, true);
+      setStatus("ingest failed");
+    }
   } finally {
     button.disabled = false;
   }
@@ -434,10 +527,21 @@ function scrollChat() {
 }
 
 function addPendingMessage(text) {
+  const log = $("chat-log");
+  const existing = log.querySelector(".msg.system.pending");
+  if (existing) {
+    existing.textContent = text;
+    scrollChat();
+    return existing;
+  }
   const node = el("div", { className: "msg system pending", textContent: text });
-  $("chat-log").append(node);
+  log.append(node);
   scrollChat();
   return node;
+}
+
+function clearPendingMessages() {
+  $("chat-log").querySelectorAll(".msg.pending").forEach((n) => n.remove());
 }
 
 async function sendChat(event) {
@@ -458,31 +562,97 @@ async function sendChat(event) {
     });
     state.currentJob = job.job_id;
     $("btn-cancel").disabled = false;
+    ensureFallbackPoll();
   } catch (error) {
     pending.remove();
     toast(error.message, true);
-    state.pendingChat -= 1;
+    state.pendingChat = Math.max(0, state.pendingChat - 1);
   }
 }
 
 /* ----------------------------------------------------------------- sse --- */
 
+let reconnectTimer = null;
+let reconnectDelay = 1000;
+let fallbackPollTimer = null;
+
 function connectEvents() {
-  if (state.eventSource) state.eventSource.close();
+  clearTimeout(reconnectTimer);
+  reconnectTimer = null;
+  if (state.eventSource) {
+    state.eventSource.onopen = null;
+    state.eventSource.onerror = null;
+    state.eventSource.close();
+    state.eventSource = null;
+  }
   const url = new URL("/api/events", location.origin);
   url.searchParams.set("since_seq", state.lastSeq || 0);
+  if (state.token) url.searchParams.set("token", state.token);
   const source = new EventSource(url, { withCredentials: false });
   state.eventSource = source;
 
-  source.onopen = () => setConn(true);
-  source.onerror = () => setConn(false);
+  source.onopen = () => {
+    reconnectDelay = 1000;
+    setConn(true);
+  };
+  source.onerror = () => {
+    setConn(false);
+    if (state.eventSource === source) {
+      source.onopen = null;
+      source.onerror = null;
+      source.close();
+      state.eventSource = null;
+    }
+    scheduleReconnect();
+    ensureFallbackPoll();
+  };
 
   for (const kind of ["hello", "job", "document", "chat", "progress", "log", "render", "error"]) {
-    source.addEventListener(kind, (event) => handleEvent(kind, JSON.parse(event.data)));
+    source.addEventListener(kind, (event) => {
+      reconnectDelay = 1000;
+      setConn(true);
+      handleEvent(kind, JSON.parse(event.data));
+    });
   }
 }
 
+function scheduleReconnect() {
+  if (reconnectTimer) return;
+  const delay = reconnectDelay;
+  reconnectDelay = Math.min(Math.round(reconnectDelay * 1.5), 5000);
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    connectEvents();
+  }, delay);
+}
+
+function ensureFallbackPoll() {
+  if (fallbackPollTimer) return;
+  fallbackPollTimer = setInterval(async () => {
+    if (state.connLive && !state.currentJob) {
+      clearInterval(fallbackPollTimer);
+      fallbackPollTimer = null;
+      return;
+    }
+    try {
+      const data = await callTool("sqwakvox_presenter_events", {
+        since_seq: state.lastSeq || 0,
+      });
+      setConn(true);
+      if (!state.eventSource || state.eventSource.readyState === EventSource.CLOSED) {
+        connectEvents();
+      }
+      for (const evt of data.events || []) {
+        await handleEvent(evt.kind, evt);
+      }
+    } catch {
+      setConn(false);
+    }
+  }, 2500);
+}
+
 function setConn(live) {
+  state.connLive = Boolean(live);
   const node = $("conn");
   node.textContent = live ? "live" : "reconnecting…";
   node.className = `conn ${live ? "live" : "down"}`;
@@ -500,24 +670,45 @@ async function handleEvent(kind, payload) {
   if (payload?.seq) state.lastSeq = Math.max(state.lastSeq, payload.seq);
   const data = payload?.data || payload || {};
   switch (kind) {
-    case "hello":
-      state.session = payload.session || data.session;
-      if (state.session) {
-        state.documents = state.session.documents || [];
-        state.activeSource = state.session.active_source;
-        if (state.session.seq) state.lastSeq = Math.max(state.lastSeq, state.session.seq);
+    case "hello": {
+      const session = payload.session || data.session;
+      if (session) {
+        const hadRenderedContent = Boolean(state.renderedSource);
+        const serverReset =
+          (typeof session.seq === "number" && session.seq < state.lastSeq) ||
+          (hadRenderedContent && (!session.documents || session.documents.length === 0));
+        if (typeof session.seq === "number") {
+          state.lastSeq = serverReset ? session.seq : Math.max(state.lastSeq, session.seq);
+        }
+        state.session = session;
+        if (serverReset && hadRenderedContent) {
+          handleBackendReset(session);
+          break;
+        }
+        if (session.documents && session.documents.length > 0) {
+          state.backendReset = false;
+        }
+        state.documents = session.documents || [];
+        state.activeSource = session.active_source;
       }
       renderDocuments();
       renderPager();
-      await Promise.all([renderDocument(state.activeSource), renderChat(state.activeSource)]);
+      if (state.activeSource !== state.renderedSource) {
+        await Promise.all([renderDocument(state.activeSource), renderChat(state.activeSource)]);
+      }
       break;
+    }
     case "progress":
-    case "log":
       addPendingMessage(data.message);
+      break;
+    case "log":
+      clearPendingMessages();
+      appendMessage({ role: "system", text: data.message });
       break;
     case "error":
       state.pendingChat = Math.max(0, state.pendingChat - 1);
-      addPendingMessage(`✗ ${data.message}`);
+      clearPendingMessages();
+      appendMessage({ role: "system", text: `✗ ${data.message}`, level: "error" });
       toast(data.message, true);
       setStatus(`error: ${data.message}`);
       break;
@@ -526,6 +717,7 @@ async function handleEvent(kind, payload) {
       break;
     case "document":
       if (Array.isArray(data.document)) {
+        state.backendReset = false;
         state.documents = data.document;
         const activeDoc = state.documents.find((d) => d.active);
         const newActive = activeDoc
@@ -553,7 +745,7 @@ async function handleEvent(kind, payload) {
       if (data.cleared) await renderChat(state.activeSource);
       else if (data.message) {
         state.pendingChat = Math.max(0, state.pendingChat - 1);
-        $("chat-log").querySelectorAll(".msg.pending").forEach((n) => n.remove());
+        clearPendingMessages();
         appendMessage(data.message);
       }
       break;
@@ -567,19 +759,26 @@ function handleJobEvent(job) {
   if (state.currentJob === job.job_id && ["success", "failure", "cancelled"].includes(job.state)) {
     state.currentJob = null;
     $("btn-cancel").disabled = true;
+    clearPendingMessages();
+  }
+  if (job.kind === "prefetch") {
+    return;
   }
   if (job.kind === "open_document") {
+    const errText = job.error || job.result?.error;
     setStatus(
       job.state === "running"
         ? "ingesting…"
         : job.state === "success"
           ? `loaded ${job.result?.file_name || job.source}`
           : job.state === "failure"
-            ? "ingest failed"
+            ? (errText ? `error: ${errText}` : "ingest failed")
             : "ingest cancelled",
     );
   }
-  scheduleRefresh();
+  if (job.state !== "failure") {
+    scheduleRefresh();
+  }
 }
 
 /* ------------------------------------------------------- tool console --- */
@@ -648,30 +847,16 @@ function wireEvents() {
   const uploadFile = async (file) => {
     if (!file) return;
     setStatus(`uploading ${file.name}…`);
-    const formData = new FormData();
-    formData.append("file", file);
     try {
-      const response = await fetch("/api/upload", {
-        method: "POST",
-        headers: headers(false),
-        body: formData,
-      });
-      const data = await response.json().catch(() => ({}));
-      if (response.status === 401) {
-        showGate("Token rejected. Try again.");
-        return;
-      }
-      if (data.ok && data.path) {
-        $("source").value = data.path;
-        setStatus(`selected ${data.file_name}`);
-        toast(`Selected ${data.file_name}`);
-      } else {
-        toast(data.error || "File upload failed", true);
+      const data = await uploadFileToServer(file);
+      $("source").value = data.path;
+      setStatus(`selected ${data.file_name}`);
+      toast(`Selected ${data.file_name}`);
+    } catch (error) {
+      if (error.message !== "unauthorized") {
+        toast(`Upload error: ${error.message}`, true);
         setStatus("upload failed");
       }
-    } catch (error) {
-      toast(`Upload error: ${error.message}`, true);
-      setStatus("upload error");
     } finally {
       const fileInput = $("file-input");
       if (fileInput) fileInput.value = "";
@@ -727,6 +912,7 @@ function wireEvents() {
       });
       state.currentJob = job.job_id;
       $("btn-cancel").disabled = false;
+      ensureFallbackPoll();
     } catch (error) {
       toast(error.message, true);
     }

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "sqwakvox"
-version = "1.7.1"
+version = "1.7.2"
 description = "Local AI Financial Document Assistant with Textual TUI, Docling Ingestion, and Mozilla any-guardrail Validation"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -42,6 +42,7 @@ dependencies = [
     "opentelemetry-api>=1.20.0",
     "opentelemetry-sdk>=1.20.0",
     "opentelemetry-exporter-otlp>=1.20.0",
+    "google-cloud-storage>=2.10.0",
     "fastmcp>=3.4.7",
     # Web presenter: Starlette serves the single-page app, SSE and the MCP
     # tool bridge; uvicorn runs it.  Both arrive transitively with fastmcp but
@@ -127,5 +128,6 @@ module = [
     "opentelemetry.*",
     "celery.*",
     "kombu.*",
+    "google.cloud.*",
 ]
 ignore_missing_imports = true

@@ -28,7 +28,9 @@ import asyncio
 import base64
 import builtins
 import json
+import logging
 from collections.abc import AsyncIterator, Iterator, Sequence
+from pathlib import Path
 from typing import Any, cast
 
 import redis
@@ -45,6 +47,8 @@ from langgraph.checkpoint.base import (
     get_checkpoint_metadata,
 )
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
+
+logger = logging.getLogger(__name__)
 
 
 def _enc(value: str) -> str:
@@ -105,10 +109,127 @@ class RedisCheckpointer(BaseCheckpointSaver[str]):
     compiled graph can resume threads across processes and restarts.
     """
 
-    def __init__(self, redis_url: str, *, key_prefix: str = "sqwakvox:ckpt") -> None:
+    def __init__(
+        self,
+        redis_url: str,
+        *,
+        key_prefix: str = "sqwakvox:ckpt",
+        backup_dir: Path | str | None = None,
+    ) -> None:
         super().__init__(serde=JsonPlusSerializer())
         self._redis = redis.Redis.from_url(redis_url, decode_responses=True)
         self._prefix = key_prefix
+        self._backup_dir: Path | None = Path(backup_dir) if backup_dir is not None else None
+        self._hydrated_keys: set[tuple[str, str]] = set()
+        self._hydrated_all: bool = False
+        if self._backup_dir is not None:
+            try:
+                self._backup_dir.mkdir(parents=True, exist_ok=True)
+            except OSError as exc:
+                logger.warning(
+                    "Could not create checkpoint backup dir %s (%s); continuing Redis-only",
+                    self._backup_dir,
+                    exc,
+                )
+                self._backup_dir = None
+
+    # ------------------------------------------------------------------ #
+    # Durable file mirror (optional write-through + lazy restore)
+    # ------------------------------------------------------------------ #
+    def _backup_file(self, thread_id: str, checkpoint_ns: str) -> Path | None:
+        if self._backup_dir is None:
+            return None
+        ns_part = _enc(checkpoint_ns) if checkpoint_ns else "default"
+        return self._backup_dir / f"{_enc(thread_id)}__{ns_part}.json"
+
+    def _hydrate_thread_ns(self, thread_id: str, checkpoint_ns: str) -> None:
+        """Load persisted checkpoints from disk into Redis on first miss."""
+        if self._backup_dir is None:
+            return
+        cache_key = (thread_id, checkpoint_ns)
+        if cache_key in self._hydrated_keys:
+            return
+        self._hydrated_keys.add(cache_key)
+
+        path = self._backup_file(thread_id, checkpoint_ns)
+        if path is None or not path.is_file():
+            return
+        # Only hydrate when Redis has no checkpoints for this thread/namespace yet.
+        if self._hkeys(self._ckpt_key(thread_id, checkpoint_ns)):
+            return
+        self._load_backup_file_into_redis(path)
+
+    def _hydrate_all_backups(self) -> None:
+        if self._backup_dir is None or self._hydrated_all:
+            return
+        self._hydrated_all = True
+        try:
+            files = sorted(self._backup_dir.glob("*.json"))
+        except OSError as exc:
+            logger.debug("Failed to list checkpoint backups in %s: %s", self._backup_dir, exc)
+            return
+        for path in files:
+            self._load_backup_file_into_redis(path)
+
+    def _load_backup_file_into_redis(self, path: Path) -> None:
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            logger.warning("Failed to read checkpoint backup %s: %s", path, exc)
+            return
+        thread_id = payload.get("thread_id")
+        checkpoint_ns = payload.get("checkpoint_ns", "")
+        if not isinstance(thread_id, str) or not isinstance(checkpoint_ns, str):
+            return
+        self._hydrated_keys.add((thread_id, checkpoint_ns))
+        ckpt_key = self._ckpt_key(thread_id, checkpoint_ns)
+        if self._hkeys(ckpt_key):
+            return
+        checkpoints = payload.get("checkpoints") or {}
+        if isinstance(checkpoints, dict):
+            for ckpt_id, raw in checkpoints.items():
+                if isinstance(ckpt_id, str) and isinstance(raw, str):
+                    self._redis.hset(ckpt_key, ckpt_id, raw)
+        writes_by_ckpt = payload.get("writes") or {}
+        if isinstance(writes_by_ckpt, dict):
+            for ckpt_id, fields in writes_by_ckpt.items():
+                if not isinstance(ckpt_id, str) or not isinstance(fields, dict):
+                    continue
+                wr_key = self._wr_key(thread_id, checkpoint_ns, ckpt_id)
+                for field, raw in fields.items():
+                    if isinstance(field, str) and isinstance(raw, str):
+                        self._redis.hset(wr_key, field, raw)
+
+    def _persist_thread_ns(self, thread_id: str, checkpoint_ns: str) -> None:
+        """Write-through current Redis state for *(thread_id, checkpoint_ns)* to disk."""
+        path = self._backup_file(thread_id, checkpoint_ns)
+        if path is None:
+            return
+        try:
+            checkpoints = self._hgetall(self._ckpt_key(thread_id, checkpoint_ns))
+            writes: dict[str, dict[str, str]] = {}
+            for ckpt_id in checkpoints:
+                wr = self._hgetall(self._wr_key(thread_id, checkpoint_ns, ckpt_id))
+                if wr:
+                    writes[ckpt_id] = wr
+            payload = {
+                "thread_id": thread_id,
+                "checkpoint_ns": checkpoint_ns,
+                "checkpoints": checkpoints,
+                "writes": writes,
+            }
+            path.parent.mkdir(parents=True, exist_ok=True)
+            serialized = json.dumps(payload, separators=(",", ":"))
+            tmp_path = path.with_suffix(".json.tmp")
+            try:
+                tmp_path.write_text(serialized, encoding="utf-8")
+                tmp_path.replace(path)
+            except OSError:
+                # Fallback for filesystems where rename-over-existing fails.
+                path.write_text(serialized, encoding="utf-8")
+                tmp_path.unlink(missing_ok=True)
+        except Exception as exc:
+            logger.warning("Failed to persist checkpoint backup %s: %s", path, exc)
 
     # ------------------------------------------------------------------ #
     # Key layout
@@ -196,6 +317,7 @@ class RedisCheckpointer(BaseCheckpointSaver[str]):
     def get_tuple(self, config: RunnableConfig) -> CheckpointTuple | None:
         thread_id: str = config["configurable"]["thread_id"]
         checkpoint_ns: str = config["configurable"].get("checkpoint_ns", "")
+        self._hydrate_thread_ns(thread_id, checkpoint_ns)
         ckpt_key = self._ckpt_key(thread_id, checkpoint_ns)
 
         requested_id = get_checkpoint_id(config)
@@ -229,7 +351,13 @@ class RedisCheckpointer(BaseCheckpointSaver[str]):
         thread_ids: Sequence[str]
         if config:
             thread_ids = (config["configurable"]["thread_id"],)
+            ns_hint = config["configurable"].get("checkpoint_ns")
+            if ns_hint is not None:
+                self._hydrate_thread_ns(thread_ids[0], ns_hint)
+            else:
+                self._hydrate_all_backups()
         else:
+            self._hydrate_all_backups()
             prefix = f"{self._prefix}:ckpt:"
             thread_ids = []
             for key in self._redis.scan_iter(f"{prefix}*"):
@@ -291,6 +419,8 @@ class RedisCheckpointer(BaseCheckpointSaver[str]):
                 (checkpoint, get_checkpoint_metadata(config, metadata), parent_checkpoint_id)
             ),
         )
+        self._hydrated_keys.add((thread_id, checkpoint_ns))
+        self._persist_thread_ns(thread_id, checkpoint_ns)
         return self._config(thread_id, checkpoint_ns, checkpoint_id)
 
     def put_writes(
@@ -312,6 +442,7 @@ class RedisCheckpointer(BaseCheckpointSaver[str]):
                 f"{task_id}:{write_idx:06d}",
                 self._dumps((channel, value)),
             )
+        self._persist_thread_ns(thread_id, checkpoint_ns)
 
     # ------------------------------------------------------------------ #
     # Async API (the compiled graph calls these from ainvoke)
