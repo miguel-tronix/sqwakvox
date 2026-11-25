@@ -98,23 +98,45 @@ _limiter = _RateLimiter(_QUERY_RPM_DEFAULT)
 
 def _trace(tool_name: str, fn: Any) -> str:
     """Run *fn* inside a telemetry span, converting exceptions to text."""
+    from opentelemetry.trace import Status, StatusCode
+
     from sqwakvox.telemetry import get_telemetry, trace_span
 
     tm = get_telemetry()
     start = time.monotonic()
-    with trace_span("sqwakvox.mcp.presenter", {"tool": tool_name}):
+    with trace_span("sqwakvox.mcp.presenter", {"tool": tool_name}) as span:
         try:
-            result = fn()
+            result = str(fn())
         except Exception as exc:
             logger.error("Presenter tool %s failed: %s", tool_name, exc, exc_info=True)
+            span.record_exception(exc)
+            span.set_status(Status(StatusCode.ERROR, str(exc)))
             if tm.mcp_tool_counter:
                 tm.mcp_tool_counter.add(1, {"tool": tool_name, "status": "failure"})
+            if tm.mcp_tool_duration:
+                tm.mcp_tool_duration.record(time.monotonic() - start, {"tool": tool_name})
             return _json({"ok": False, "error": f"Tool '{tool_name}' failed: {exc}"})
+
+        # Surface tool-level error payloads (e.g. seek/load timeouts returning
+        # {"ok": false, "error": ...}) as OTel ERROR spans so telemetry flags them.
+        tool_ok = True
+        try:
+            parsed = json.loads(result)
+            if isinstance(parsed, dict) and parsed.get("ok") is False:
+                tool_ok = False
+                err_msg = str(parsed.get("error") or "Tool returned ok=false")
+                span.set_attribute("error.message", err_msg)
+                span.set_status(Status(StatusCode.ERROR, err_msg))
+        except (ValueError, TypeError):
+            pass
+
     if tm.mcp_tool_counter:
-        tm.mcp_tool_counter.add(1, {"tool": tool_name, "status": "success"})
+        tm.mcp_tool_counter.add(
+            1, {"tool": tool_name, "status": "success" if tool_ok else "failure"}
+        )
     if tm.mcp_tool_duration:
         tm.mcp_tool_duration.record(time.monotonic() - start, {"tool": tool_name})
-    return str(result)
+    return result
 
 
 # --------------------------------------------------------------------------- #
@@ -330,19 +352,25 @@ def sqwakvox_presenter_document(source: str = "", include_text: bool = True) -> 
 @mcp.tool(
     name="sqwakvox_presenter_load_more",
     description=(
-        "Append the next PDF page slice to a document loaded incrementally "
+        "Load an adjacent PDF page slice for a document loaded incrementally "
         "(large PDFs render slice by slice). Args: source (optional, defaults "
-        "to the active document), timeout (seconds, default 600)."
+        "to the active document), direction ('down' appends the next pages; "
+        "'up' prepends earlier pages when the window starts past page 1), "
+        "timeout (seconds, default 600)."
     ),
     annotations={"readOnlyHint": False, "destructiveHint": False},
 )
-def sqwakvox_presenter_load_more(source: str = "", timeout: float = 600.0) -> str:
-    """Load the next page slice (blocking)."""
+def sqwakvox_presenter_load_more(
+    source: str = "", direction: str = "down", timeout: float = 600.0
+) -> str:
+    """Load the next or previous page slice (blocking)."""
 
     def _run() -> str:
         try:
             result = _session().load_more_and_wait(
-                source.strip() or None, timeout=_clamp_timeout(timeout)
+                source.strip() or None,
+                timeout=_clamp_timeout(timeout),
+                direction=direction,
             )
         except (KeyError, ValueError) as exc:
             return _json({"ok": False, "error": str(exc)})

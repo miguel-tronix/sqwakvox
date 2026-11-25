@@ -552,6 +552,12 @@ class DocSession:
             "rendered_pages": loaded.rendered_pages,
             "total_pages": loaded.total_pages,
             "next_start_page": loaded.rendered_pages + 1,
+            "has_previous": loaded.window_start > 1,
+            "prev_start_page": (
+                max(1, loaded.window_start - max(1, loaded.batch_size))
+                if loaded.window_start > 1
+                else None
+            ),
             "next_batch": loaded.next_batch,
             "complete": done,
         }
@@ -990,17 +996,23 @@ class DocSession:
     # ------------------------------------------------------------------ #
     # Incremental PDF paging
     # ------------------------------------------------------------------ #
-    def load_more(self, source: str | None = None) -> Job:
-        """Append the next PDF page slice to *source*."""
+    def load_more(self, source: str | None = None, *, direction: str = "down") -> Job:
+        """Load the next (``direction='down'``) or earlier (``direction='up'``) PDF slice."""
         source = source or self._active_source
         if source is None:
             raise ValueError("No active document loaded")
-        return self._submit(self._load_more(source), kind="load_more", source=source)
+        return self._submit(
+            self._load_more(source, direction=direction), kind="load_more", source=source
+        )
 
     def load_more_and_wait(
-        self, source: str | None = None, timeout: float | None = None
+        self,
+        source: str | None = None,
+        timeout: float | None = None,
+        *,
+        direction: str = "down",
     ) -> dict[str, Any]:
-        job = self.load_more(source)
+        job = self.load_more(source, direction=direction)
         return self.wait_job(job.job_id, timeout=timeout)
 
     def seek_page(self, source: str | None = None, page: int = 1, window: int = 10) -> Job:
@@ -1037,8 +1049,10 @@ class DocSession:
                     with contextlib.suppress(Exception):
                         await cancel_fn(task_id)
 
-    async def _prefetch(self, source: str, start_page: int) -> dict[str, Any]:
-        """Cache the PDF slice starting at *start_page* (one slice ahead)."""
+    async def _prefetch(
+        self, source: str, start_page: int, end_page: int | None = None
+    ) -> dict[str, Any]:
+        """Cache the PDF slice starting at *start_page* (optionally bounded by *end_page*)."""
         loaded = self.loaded_documents.get(source)
         if loaded is None or not loaded.is_paged:
             return {"ok": False, "error": "Document is not paged."}
@@ -1056,7 +1070,11 @@ class DocSession:
             return {"ok": True, "cached": True}
 
         start = start_page
-        end = start + loaded.batch_size - 1
+        end = (
+            max(start, int(end_page))
+            if end_page is not None
+            else start + max(1, loaded.batch_size) - 1
+        )
         if loaded.total_pages:
             end = min(end, loaded.total_pages)
         generation = loaded.paging_generation
@@ -1104,11 +1122,21 @@ class DocSession:
                 loaded.prefetch_events.pop(start, None)
             done_event.set()
 
-    async def _load_more(self, source: str) -> dict[str, Any]:
-        """Reveal the next prefetched (or freshly fetched) PDF slice."""
+    async def _load_more(self, source: str, direction: str = "down") -> dict[str, Any]:
+        """Reveal the next (``down``) or previous (``up``) PDF slice."""
         loaded = self.loaded_documents.get(source)
         if loaded is None or not loaded.is_paged:
             return {"ok": False, "error": "Document is not paged."}
+
+        norm_dir = (direction or "down").strip().lower()
+        if norm_dir in ("up", "prev", "previous", "backward", "before"):
+            return await self._load_previous(source, loaded)
+        if norm_dir not in ("down", "next", "forward", "after"):
+            return {
+                "ok": False,
+                "error": f"Invalid direction '{direction}': use 'up' or 'down'.",
+            }
+
         if loaded.total_pages and loaded.rendered_pages >= loaded.total_pages:
             loaded.paging_complete = True
             return {"ok": True, "page_range": self.page_info(source)}
@@ -1151,6 +1179,69 @@ class DocSession:
             )
         return {
             "ok": True,
+            "direction": "down",
+            "pages_added": pages_in_batch,
+            "page_range": self.page_info(source),
+        }
+
+    async def _load_previous(self, source: str, loaded: LoadedDocument) -> dict[str, Any]:
+        """Prepend the PDF slice immediately preceding ``loaded.window_start``."""
+        if loaded.window_start <= 1:
+            return {
+                "ok": True,
+                "direction": "up",
+                "pages_added": 0,
+                "page_range": self.page_info(source),
+            }
+
+        batch_size = max(1, loaded.batch_size or self.pdf_batch_size)
+        end_page = loaded.window_start - 1
+        start_page = max(1, end_page - batch_size + 1)
+
+        if start_page not in loaded.batch_cache:
+            existing_event = loaded.prefetch_events.get(start_page)
+            if existing_event is not None:
+                await existing_event.wait()
+            elif start_page in loaded.pending:
+                await loaded.pending[start_page].wait()
+            else:
+                prefetch = await self._prefetch(source, start_page, end_page=end_page)
+                if not prefetch.get("ok"):
+                    return prefetch
+
+        batch = loaded.batch_cache.pop(start_page, None)
+        if batch is None:
+            return {"ok": True, "direction": "up", "page_range": self.page_info(source)}
+        if not (batch.raw_markdown or "").strip():
+            return {
+                "ok": True,
+                "direction": "up",
+                "pages_added": 0,
+                "page_range": self.page_info(source),
+            }
+
+        pages_in_batch = end_page - start_page + 1
+        loaded.structured.raw_markdown = (
+            batch.raw_markdown + "\n\n" + loaded.structured.raw_markdown
+        )
+        loaded.structured.tables = [*batch.tables, *loaded.structured.tables]
+        loaded.window_start = start_page
+
+        if source == self._active_source:
+            self.doc_context = get_domain(loaded.domain_id).context_for(loaded.structured)
+        self._emit(EVENT_RENDER, {"source": source, "page_range": self.page_info(source)})
+        # Keep one earlier slice prefetched if the user is paging upward.
+        if loaded.window_start > 1:
+            prev_end = loaded.window_start - 1
+            prev_start = max(1, prev_end - batch_size + 1)
+            self._submit(
+                self._prefetch(source, prev_start, end_page=prev_end),
+                kind="prefetch",
+                source=source,
+            )
+        return {
+            "ok": True,
+            "direction": "up",
             "pages_added": pages_in_batch,
             "page_range": self.page_info(source),
         }
