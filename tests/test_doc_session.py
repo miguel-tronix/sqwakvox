@@ -509,6 +509,37 @@ def test_chat_history_survives_a_reload(session: DocSession) -> None:
         reloaded.close()
 
 
+def test_session_getters_and_registries_defend_against_mutation(session: DocSession) -> None:
+    from dataclasses import FrozenInstanceError
+
+    from sqwakvox.domains import get_domain
+    from sqwakvox.models import ModelProvider
+
+    session.open_document_and_wait("/tmp/report.pdf")
+
+    # Mutating returned document_detail metadata must not corrupt live document state.
+    detail = session.document_detail("/tmp/report.pdf")
+    detail["metadata"]["data_store"]["Injected"] = "999"
+    assert "Injected" not in session.data_store("/tmp/report.pdf")
+
+    # Mutating returned chat entries must not corrupt internal chat history.
+    entry = session.append_chat("/tmp/report.pdf", "user", "original")
+    entry["text"] = "mutated"
+    messages = session.chat("/tmp/report.pdf")
+    assert messages[-1]["text"] == "original"
+    messages[-1]["text"] = "also mutated"
+    assert session.chat("/tmp/report.pdf")[-1]["text"] == "original"
+
+    # Shared domain profiles and ModelProvider.MAP are immutable.
+    domain = get_domain("swe")
+    with pytest.raises(FrozenInstanceError):
+        domain.display_name = "tampered"  # type: ignore[misc]
+    with pytest.raises(TypeError):
+        ModelProvider.MAP["evil"] = {}  # type: ignore[index]
+    with pytest.raises(TypeError):
+        ModelProvider.MAP["openai:gpt-5.5-high"]["env_var"] = "HACK"  # type: ignore[index]
+
+
 # ---------------------------------------------------------------- cross-validation
 
 

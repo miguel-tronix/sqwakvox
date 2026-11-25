@@ -39,6 +39,11 @@ celery_app.conf.update(
     # Don't ACK until the task body finishes; lets the presenter poll for
     # state transitions (PENDING -> STARTED -> SUCCESS/FAILURE).
     task_acks_late=True,
+    # Keep real OS stdout/stderr file descriptors inside worker processes:
+    # Celery's LoggingProxy lacks .fileno(), which crashes mcp.client.stdio
+    # (anyio.open_process) when spawning stdio MCP tool servers inside a worker.
+    # Worker logs are already routed cleanly by run_worker.py & worker_manager.py.
+    worker_redirect_stdouts=False,
     # Generous limits for slow hardware: document OCR/parsing (docling) on an
     # old laptop routinely exceeds the old 9-10 min budget.  The soft limit
     # (30 min) raises SoftTimeLimitExceeded inside the task so it can fail

@@ -13,14 +13,18 @@ rehydrate cleanly.
 
 from __future__ import annotations
 
+import logging
 import os
+import sys
 from collections.abc import AsyncIterator, Mapping, Sequence
 from contextlib import AsyncExitStack, asynccontextmanager
 from datetime import timedelta
-from typing import TYPE_CHECKING, Annotated, Any, Literal, TypeAlias, cast
+from typing import TYPE_CHECKING, Annotated, Any, Literal, TextIO, TypeAlias, cast
 
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, TypeAdapter
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from langchain_mcp_adapters.sessions import (
@@ -246,11 +250,65 @@ def tool_names(tools: Sequence[BaseTool]) -> list[str]:
     return [getattr(tool, "name", str(tool)) for tool in tools]
 
 
+_devnull_errlog: TextIO | None = None
+
+
+def _has_valid_fileno(stream: Any) -> bool:
+    """Return True if *stream* exposes a usable OS file descriptor."""
+    fileno = getattr(stream, "fileno", None)
+    if not callable(fileno):
+        return False
+    try:
+        fd = fileno()
+    except Exception:
+        return False
+    return isinstance(fd, int) and fd >= 0
+
+
+def _ensure_stdio_errlog_has_fileno() -> None:
+    """Repair ``mcp.client.stdio.stdio_client``'s default ``errlog`` if needed.
+
+    ``mcp.client.stdio.stdio_client`` binds ``errlog=sys.stderr`` at import
+    time.  If a runtime wrapper (such as Celery's ``LoggingProxy`` or a test
+    capture stream) replaced ``sys.stderr`` with an object lacking ``.fileno()``,
+    ``anyio.open_process`` raises ``AttributeError`` for every stdio MCP server.
+    Swap the default back to ``sys.__stderr__`` (or ``os.devnull``) so stdio
+    servers can always spawn cleanly.
+    """
+    global _devnull_errlog
+    try:
+        from mcp.client.stdio import stdio_client
+    except Exception:
+        return
+
+    fn: Any = getattr(stdio_client, "__wrapped__", stdio_client)
+    defaults = getattr(fn, "__defaults__", None)
+    if not defaults or _has_valid_fileno(defaults[0]):
+        return
+
+    fallback: TextIO
+    if _has_valid_fileno(sys.__stderr__):
+        fallback = cast(TextIO, sys.__stderr__)
+    else:
+        if _devnull_errlog is None or _devnull_errlog.closed:
+            _devnull_errlog = open(os.devnull, "w", encoding="utf-8")  # noqa: PTH123, SIM115
+        fallback = _devnull_errlog
+    fn.__defaults__ = (fallback, *defaults[1:])
+    logger.info("Repaired mcp.client.stdio default errlog (previous stream had no fileno)")
+
+
+def _describe_config(config: MCPParams) -> str:
+    if isinstance(config, MCPStdio):
+        args_str = " ".join(config.args)
+        return f"{config.command} {args_str}".strip()
+    return config.url
+
+
 @asynccontextmanager
 async def connected_tools(
     configs: Sequence[MCPParams],
 ) -> AsyncIterator[list[BaseTool]]:
-    """Yield the combined tools of every server in *configs*.
+    """Yield the combined tools of every healthy server in *configs*.
 
     Sessions are opened one at a time through an ``AsyncExitStack`` so that each
     server's ``tools`` allowlist can be applied to its own tools (see
@@ -259,6 +317,11 @@ async def connected_tools(
     bound to the session that spawned them, and closing early leaves the tools
     dead mid-run.  The caller must therefore keep this ``async with`` block
     open for the duration of the agent run.
+
+    Per-server startup failures are logged and skipped so a broken optional
+    server cannot take down healthy siblings (such as ``skills`` or
+    ``retrieval``).  ``MCPConnectionError`` is raised only if *every*
+    configured server fails to start.
 
     Note ``MultiServerMCPClient`` is deliberately not used as a context manager:
     langchain-mcp-adapters 0.1.0 removed that and raises ``NotImplementedError``.
@@ -270,22 +333,33 @@ async def connected_tools(
         yield []
         return
 
+    _ensure_stdio_errlog_has_fileno()
+
     client = MultiServerMCPClient(
         connections={f"server_{i}": to_connection(cfg) for i, cfg in enumerate(configs)}
     )
 
     collected: list[BaseTool] = []
+    connected_count = 0
+    errors: list[str] = []
     async with AsyncExitStack() as stack:
         for index, config in enumerate(configs):
             server_name = f"server_{index}"
+            desc = _describe_config(config)
             try:
                 session = await stack.enter_async_context(client.session(server_name))
                 tools = await load_mcp_tools(session, server_name=server_name)
             except Exception as exc:
-                raise MCPConnectionError(
-                    f"MCP server {server_name} failed to start: {exc}"
-                ) from exc
+                msg = f"{server_name} ({desc}): {exc}"
+                errors.append(msg)
+                logger.warning("MCP server failed to start; skipping %s", msg)
+                continue
+            connected_count += 1
             collected.extend(filter_tools(tools, config))
+        if connected_count == 0 and errors:
+            raise MCPConnectionError(
+                f"All {len(errors)} MCP server(s) failed to start: {'; '.join(errors)}"
+            )
         yield collected
 
 

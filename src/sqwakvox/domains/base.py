@@ -43,7 +43,7 @@ class IngestPlan:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
-@dataclass
+@dataclass(frozen=True)
 class InputGuardrailResult:
     """Verdict of a domain's input guardrail stages for a user prompt."""
 
@@ -53,7 +53,7 @@ class InputGuardrailResult:
     text: str | None = None
 
 
-@dataclass
+@dataclass(frozen=True)
 class OutputGuardrailResult:
     """Verdict of a domain's output guardrail stages for an agent response."""
 
@@ -78,7 +78,7 @@ def standard_validate_input(prompt: str) -> InputGuardrailResult:
     return InputGuardrailResult(safe=True, text=redacted)
 
 
-@dataclass
+@dataclass(frozen=True)
 class GuardrailPipeline:
     """The input/output guardrail hooks a domain runs around the agent call."""
 
@@ -96,7 +96,7 @@ def default_build_context(doc: StructuredDocument) -> str:
     return doc.raw_markdown or ""
 
 
-@dataclass
+@dataclass(frozen=True)
 class DocumentDomain:
     """Declarative profile for one document assistant (financial, swe, ...)."""
 

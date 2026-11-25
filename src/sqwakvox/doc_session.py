@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import copy
 import io
 import json
 import logging
@@ -285,15 +286,15 @@ class DocSession:
             logger.error("Session job %s failed: %s", job.job_id, exc, exc_info=True)
             self._emit(EVENT_JOB, {"job": job.as_dict()})
             self._emit(EVENT_ERROR, {"job_id": job.job_id, "message": job.error})
-            return dict(job.result)
+            return copy.deepcopy(job.result)
         if isinstance(result, dict) and result.get("ok") is False:
             job.state = JOB_FAILURE
             job.error = str(result.get("error") or "Job failed.")
         else:
             job.state = JOB_SUCCESS
-        job.result = result
+        job.result = copy.deepcopy(result) if isinstance(result, dict) else result
         self._emit(EVENT_JOB, {"job": job.as_dict()})
-        return dict(result)
+        return copy.deepcopy(result) if isinstance(result, dict) else dict(result)
 
     # ------------------------------------------------------------------ #
     # Events
@@ -593,7 +594,7 @@ class DocSession:
             "file_name": loaded.file_name,
             "domain_id": loaded.domain_id,
             "queue": self.queue_of(loaded.source),
-            "metadata": doc.metadata,
+            "metadata": copy.deepcopy(doc.metadata),
             "tables": [t.model_dump() for t in doc.tables],
             "page_range": self.page_info(loaded.source),
             "active": loaded.source == self._active_source,
@@ -627,7 +628,7 @@ class DocSession:
         name = loaded.file_name
         if name not in self.chat_histories:
             self.chat_histories[name] = self._load_chat_log(name)
-        return list(self.chat_histories[name])
+        return copy.deepcopy(self.chat_histories[name])
 
     def _save_chat_log(self, doc_name: str) -> None:
         path = self._chat_log_path(doc_name)
@@ -668,8 +669,8 @@ class DocSession:
         name = self.loaded_documents[source].file_name
         self.chat_histories.setdefault(name, []).append(entry)
         self._save_chat_log(name)
-        self._emit(EVENT_CHAT, {"source": source, "message": entry})
-        return entry
+        self._emit(EVENT_CHAT, {"source": source, "message": copy.deepcopy(entry)})
+        return copy.deepcopy(entry)
 
     def clear_chat(self, source: str | None = None) -> bool:
         """Drop the chat history for *source* (and its saved log)."""
@@ -758,7 +759,7 @@ class DocSession:
         source = source.strip()
         if not source:
             raise ValueError("source must not be empty")
-        normalized_opts = options or {}
+        normalized_opts = copy.deepcopy(options) if options else {}
         open_key = (source, domain_id, json.dumps(normalized_opts, sort_keys=True, default=str))
         existing = self._inflight_opens.get(open_key)
         if existing is not None and existing.state == JOB_RUNNING:
