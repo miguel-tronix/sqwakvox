@@ -353,14 +353,47 @@ function renderPager() {
   };
   pager.append(form);
 
-  const more = el("button", { textContent: info.complete ? "All pages ✓" : "Load more ↓" });
+  const hasPrev = info.has_previous ?? start > 1;
+  const prev = el("button", {
+    textContent: hasPrev ? "Load more ↑" : "At page 1",
+    title: hasPrev ? "Prepend earlier pages" : "Already at page 1",
+  });
+  prev.disabled = !hasPrev;
+  prev.onclick = async () => {
+    if (prev.disabled) return;
+    prev.disabled = true;
+    prev.textContent = "Loading…";
+    try {
+      const data = await callTool("sqwakvox_presenter_load_more", {
+        source: doc.source,
+        direction: "up",
+      });
+      if (data.page_range) state.pageInfo = { ...data.page_range, source: doc.source };
+      await renderDocument(doc.source);
+    } catch (e) {
+      toast(e.message, true);
+    } finally {
+      renderPager();
+    }
+  };
+  pager.append(prev);
+
+  const more = el("button", {
+    textContent: info.complete ? "All pages ✓" : "Load more ↓",
+    title: info.complete ? "End of document reached" : "Append later pages",
+  });
   more.disabled = Boolean(info.complete);
   more.onclick = async () => {
     if (more.disabled) return;
     more.disabled = true;
     more.textContent = "Loading…";
     try {
-      await callTool("sqwakvox_presenter_load_more", { source: doc.source });
+      const data = await callTool("sqwakvox_presenter_load_more", {
+        source: doc.source,
+        direction: "down",
+      });
+      if (data.page_range) state.pageInfo = { ...data.page_range, source: doc.source };
+      await renderDocument(doc.source);
     } catch (e) {
       toast(e.message, true);
     } finally {

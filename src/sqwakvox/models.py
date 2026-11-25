@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
+from types import MappingProxyType
 from typing import Any, ClassVar
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class TableData(BaseModel):
@@ -15,48 +17,53 @@ class TableData(BaseModel):
 class StructuredDocument(BaseModel):
     file_name: str
     raw_markdown: str
-    tables: list[TableData] = []
-    metadata: dict[str, Any] = {}
+    tables: list[TableData] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class ModelProvider:
-    MAP: ClassVar[dict[str, dict[str, Any]]] = {
-        "openai:gpt-5.5-high": {
-            "env_var": "OPENAI_API_KEY",
-            "friendly_name": "OpenAI GPT-5.5 High",
-            "supports_system_role": True,
-        },
-        "anthropic:claude-4.6": {
-            "env_var": "ANTHROPIC_API_KEY",
-            "friendly_name": "Anthropic Claude 4.6",
-            "supports_system_role": True,
-        },
-        "gemini:gemini-3.8-flash": {
-            "env_var": "GEMINI_API_KEY",
-            "friendly_name": "Google Gemini 3.8 Flash",
-            "supports_system_role": True,
-        },
-        "gemini:gemini-3.7-flash": {
-            "env_var": "GEMINI_API_KEY",
-            "friendly_name": "Google Gemini 3.7 Flash",
-            "supports_system_role": True,
-        },
-        "gemini:gemini-3.6-flash": {
-            "env_var": "GEMINI_API_KEY",
-            "friendly_name": "Google Gemini 3.6 Flash",
-            "supports_system_role": False,
-        },
-        "deepseek:deepseek-v4-flash": {
-            "env_var": "DEEPSEEK_API_KEY",
-            "friendly_name": "Deepseek v4 Flash",
-            "supports_system_role": True,
-        },
-        "deepseek:deepseek-v4-pro": {
-            "env_var": "DEEPSEEK_API_KEY",
-            "friendly_name": "Deepseek v4 Pro",
-            "supports_system_role": True,
-        },
-    }
+    MAP: ClassVar[Mapping[str, Mapping[str, Any]]] = MappingProxyType(
+        {
+            model_id: MappingProxyType(meta)
+            for model_id, meta in {
+                "openai:gpt-5.5-high": {
+                    "env_var": "OPENAI_API_KEY",
+                    "friendly_name": "OpenAI GPT-5.5 High",
+                    "supports_system_role": True,
+                },
+                "anthropic:claude-4.6": {
+                    "env_var": "ANTHROPIC_API_KEY",
+                    "friendly_name": "Anthropic Claude 4.6",
+                    "supports_system_role": True,
+                },
+                "gemini:gemini-3.8-flash": {
+                    "env_var": "GEMINI_API_KEY",
+                    "friendly_name": "Google Gemini 3.8 Flash",
+                    "supports_system_role": True,
+                },
+                "gemini:gemini-3.7-flash": {
+                    "env_var": "GEMINI_API_KEY",
+                    "friendly_name": "Google Gemini 3.7 Flash",
+                    "supports_system_role": True,
+                },
+                "gemini:gemini-3.6-flash": {
+                    "env_var": "GEMINI_API_KEY",
+                    "friendly_name": "Google Gemini 3.6 Flash",
+                    "supports_system_role": False,
+                },
+                "deepseek:deepseek-v4-flash": {
+                    "env_var": "DEEPSEEK_API_KEY",
+                    "friendly_name": "Deepseek v4 Flash",
+                    "supports_system_role": True,
+                },
+                "deepseek:deepseek-v4-pro": {
+                    "env_var": "DEEPSEEK_API_KEY",
+                    "friendly_name": "Deepseek v4 Pro",
+                    "supports_system_role": True,
+                },
+            }.items()
+        }
+    )
 
     @classmethod
     def get_env_var(cls, model_id: str) -> str:

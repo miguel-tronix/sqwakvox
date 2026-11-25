@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import json
 import logging
@@ -142,8 +143,20 @@ Screen {
     align: center middle;
 }
 
+/* Textual's default Button min-width (16) would crowd the pager row;
+   shrink the pager buttons to their labels so the indicator fits too. */
+#doc-pager-row Button {
+    min-width: 0;
+    margin-right: 1;
+}
+
+#seek-input {
+    width: 6;
+}
+
 #page-indicator {
     height: 3;
+    width: 1fr;
     content-align: left middle;
     margin-left: 1;
 }
@@ -170,6 +183,42 @@ Screen {
 
 #chat-column {
     layout: vertical;
+}
+
+#chat-header-row {
+    height: auto;
+    margin-bottom: 1;
+}
+
+#chat-title {
+    width: 1fr;
+}
+
+#btn-collapse-chat {
+    min-width: 4;
+}
+
+/* Restore rail button — only shown while the chat column is collapsed. */
+#btn-expand-chat {
+    display: none;
+}
+
+/* Collapsed chat: the third grid column shrinks to a narrow rail holding
+   just the restore button (mirrors the web presenter's chat collapse). */
+Screen.chat-collapsed {
+    grid-columns: 1fr 2.2fr 6;
+}
+
+Screen.chat-collapsed #chat-header-row,
+Screen.chat-collapsed #chat-log,
+Screen.chat-collapsed #chat-input-row {
+    display: none;
+}
+
+Screen.chat-collapsed #btn-expand-chat {
+    display: block;
+    width: 100%;
+    min-width: 0;
 }
 
 #chat-log {
@@ -287,6 +336,7 @@ class SqwakvoxApp(App[None]):
         Binding("up", "scroll_up", "Scroll Up", priority=True),
         Binding("down", "scroll_down", "Scroll Down", priority=True),
         Binding("ctrl+x", "cross_validate", "Cross-Validate", priority=True),
+        Binding("ctrl+t", "toggle_chat", "Toggle Chat", priority=True),
     ]
 
     is_parsing = reactive(False)
@@ -317,6 +367,8 @@ class SqwakvoxApp(App[None]):
         # ``sqwakvox.docling`` worker (see :mod:`sqwakvox.worker_manager`).
         self._doc_queues: dict[str, str] = {}
         self.worker_manager = WorkerManager()
+        #: Chat column collapsed to a narrow rail (see ``_set_chat_collapsed``).
+        self.chat_collapsed = False
 
     def _queue_for_source(self, source: str) -> str | None:
         """Return the dedicated queue for *source*, assigning one on first use.
@@ -441,15 +493,32 @@ class SqwakvoxApp(App[None]):
                 yield DocumentRenderPane(id="render-pane")
                 with Horizontal(id="doc-pager-row"):
                     yield Button(
-                        "Load more pages ↓",
+                        "Load more ↑",
+                        id="btn-load-previous",
+                        variant="default",
+                        disabled=True,
+                    )
+                    yield Button(
+                        "Load more ↓",
                         id="btn-load-more",
                         variant="default",
                         disabled=True,
                     )
+                    yield Input(
+                        placeholder="Page",
+                        id="seek-input",
+                        disabled=True,
+                    )
+                    yield Button("Go", id="btn-seek", variant="default", disabled=True)
                     yield Label("", id="page-indicator")
             yield RichLog(id="agent-response-pane", highlight=True, markup=True, wrap=True)
 
         with Vertical(id="chat-column"):
+            # Shown only while the chat column is collapsed (a narrow rail).
+            yield Button("Chat", id="btn-expand-chat", variant="default")
+            with Horizontal(id="chat-header-row"):
+                yield Label("[bold]Chat[/bold]", id="chat-title")
+                yield Button("»", id="btn-collapse-chat", variant="default")
             yield RichLog(id="chat-log", highlight=True, markup=True, wrap=True)
             with Horizontal(id="chat-input-row"):
                 yield Input(
@@ -660,7 +729,44 @@ class SqwakvoxApp(App[None]):
         self.query_one("#doc-source", Input).focus()
 
     def action_focus_chat_input(self) -> None:
+        if self.chat_collapsed:
+            # Expanding focuses the input once the layout has settled.
+            self._set_chat_collapsed(False)
+            return
         self.query_one("#chat-input", Input).focus()
+
+    def action_toggle_chat(self) -> None:
+        """Collapse/expand the chat column (the web UI's chat toggle)."""
+        self._set_chat_collapsed(not self.chat_collapsed)
+
+    def _set_chat_collapsed(self, collapsed: bool) -> None:
+        """Collapse the chat column to a narrow rail, or expand it back.
+
+        Mirrors the web presenter: collapsed, the third grid column shrinks
+        to a rail holding a single restore button, and the chat header,
+        log and input row are hidden (their content is kept, so the
+        conversation is still there when the panel comes back).
+        """
+        collapsed = bool(collapsed)
+        self.chat_collapsed = collapsed
+        if collapsed:
+            self.screen.add_class("chat-collapsed")
+            # Never leave focus parked on a now-hidden chat widget.
+            focused = self.focused
+            chat_column = self.query_one("#chat-column")
+            if focused is not None and chat_column in focused.ancestors:
+                self.query_one("#render-pane", DocumentRenderPane).focus()
+        else:
+            self.screen.remove_class("chat-collapsed")
+            # The chat input stays hidden until the screen restyles after the
+            # class change (focusable requires visibility), so focus it once
+            # the layout has settled — matching the web UI, which focuses the
+            # chat input on expand.
+            self.call_after_refresh(self._focus_chat_input)
+
+    def _focus_chat_input(self) -> None:
+        with contextlib.suppress(Exception):
+            self.query_one("#chat-input", Input).focus()
 
     def action_clear_chat(self) -> None:
         chat_log = self.query_one("#chat-log", RichLog)
@@ -786,8 +892,9 @@ class SqwakvoxApp(App[None]):
             self.query_one("#doc-source", Input),
             self.query_one("#agent-response-pane", RichLog),
             self.query_one("#render-pane", DocumentRenderPane),
-            self.query_one("#chat-input", Input),
         ]
+        if not self.chat_collapsed:
+            panes.append(self.query_one("#chat-input", Input))
         focused = self.focused
         if focused in panes:
             idx = panes.index(focused)
@@ -866,6 +973,16 @@ class SqwakvoxApp(App[None]):
             source = self._active_source()
             if source:
                 self.run_worker(self._load_more(source), name=f"load_more_{source}")
+        elif event.button.id == "btn-load-previous":
+            source = self._active_source()
+            if source:
+                self.run_worker(self._load_previous(source), name=f"load_prev_{source}")
+        elif event.button.id == "btn-seek":
+            self._handle_seek()
+        elif event.button.id == "btn-collapse-chat":
+            self._set_chat_collapsed(True)
+        elif event.button.id == "btn-expand-chat":
+            self._set_chat_collapsed(False)
 
     def _on_file_selected(self, path: Path | None) -> None:
         if path:
@@ -874,6 +991,8 @@ class SqwakvoxApp(App[None]):
     def on_input_submitted(self, event: Input.Submitted) -> None:
         if event.input.id == "chat-input" and not event.input.disabled:
             self._handle_chat()
+        elif event.input.id == "seek-input" and not event.input.disabled:
+            self._handle_seek()
 
     def _handle_parse(self) -> None:
         source = self.query_one("#doc-source", Input).value.strip()
@@ -1087,8 +1206,15 @@ class SqwakvoxApp(App[None]):
             loaded = self.loaded_documents[source]
             loaded.batch_size = int(structured.metadata.get("pages_in_batch") or PDF_BATCH_SIZE)
             loaded.total_pages = structured.metadata.get("total_pages")
-            loaded.rendered_pages = loaded.batch_size
+            # ``rendered_pages`` is the highest rendered page (window end).
+            loaded.rendered_pages = (
+                min(loaded.batch_size, loaded.total_pages)
+                if loaded.total_pages
+                else loaded.batch_size
+            )
+            loaded.window_start = 1
             loaded.next_batch = 1
+            loaded.paging_complete = False
             loaded.batch_cache = {}
             loaded.pending = {}
 
@@ -1109,134 +1235,225 @@ class SqwakvoxApp(App[None]):
 
         # Prefetch the next slice in the background so "Load more" is instant.
         if self.loaded_documents[source].is_paged:
+            loaded = self.loaded_documents[source]
+            next_start = loaded.rendered_pages + 1
             self._update_pager(source)
             self.run_worker(
-                self._prefetch_batch(source, 1),
-                name=f"prefetch_{source}_1",
+                self._prefetch_batch(source, next_start),
+                name=f"prefetch_{source}_{next_start}",
             )
 
     # ------------------------------------------------------------------ #
-    # Incremental PDF paging: render the first slice, prefetch the rest.
+    # Incremental PDF paging: seek, load earlier/later slices, prefetch.
     # ------------------------------------------------------------------ #
     def _update_pager(self, source: str) -> None:
-        """Enable/disable the "Load more" control and show a page indicator."""
+        """Sync the pager controls (↑ / ↓ / seek + indicator) with *source*.
+
+        ``rendered_pages`` holds the highest rendered page (the window end),
+        so the indicator reads ``Pages {window_start}-{rendered_pages}``.
+        """
         try:
-            btn = self.query_one("#btn-load-more", Button)
+            btn_down = self.query_one("#btn-load-more", Button)
+            btn_up = self.query_one("#btn-load-previous", Button)
+            seek_input = self.query_one("#seek-input", Input)
+            seek_btn = self.query_one("#btn-seek", Button)
             indicator = self.query_one("#page-indicator", Label)
         except Exception:
             return
         loaded = self.loaded_documents.get(source)
         if loaded is None or not loaded.is_paged:
-            btn.disabled = True
+            btn_down.disabled = True
+            btn_down.label = "Load more ↓"
+            btn_up.disabled = True
+            btn_up.label = "Load more ↑"
+            seek_input.disabled = True
+            seek_btn.disabled = True
             indicator.update("")
             return
-        rendered = loaded.rendered_pages
+        start = loaded.window_start
+        end = loaded.rendered_pages
         total = loaded.total_pages
         if total:
-            indicator.update(f"[dim]Pages 1-{rendered} of {total}[/dim]")
-            done = rendered >= total
+            indicator.update(f"[dim]Pages {start}-{end} of {total}[/dim]")
+            done = end >= total
         else:
-            indicator.update(f"[dim]Pages 1-{rendered} loaded[/dim]")
-            # Unknown total: stop once the next slice comes back empty.
-            done = (
-                loaded.next_batch in loaded.batch_cache
-                and not (loaded.batch_cache[loaded.next_batch].raw_markdown or "").strip()
-            )
-        btn.disabled = done
-        btn.label = "All pages loaded ✓" if done else "Load more pages ↓"
+            indicator.update(f"[dim]Pages {start}-{end} loaded[/dim]")
+            # Unknown total: done once an empty slice proved the end.
+            done = loaded.paging_complete
+        btn_down.disabled = done
+        btn_down.label = "All pages ✓" if done else "Load more ↓"
+        btn_up.disabled = start <= 1
+        btn_up.label = "Load more ↑" if start > 1 else "At page 1"
+        seek_input.disabled = False
+        seek_btn.disabled = False
+        seek_input.placeholder = f"Page 1-{total}" if total else "Page"
 
-    async def _prefetch_batch(self, source: str, batch_index: int) -> None:
-        """Fetch PDF page slice *batch_index* in the background and cache it.
+    async def _prefetch_batch(
+        self,
+        source: str,
+        start_page: int,
+        *,
+        end_page: int | None = None,
+        chain: bool = True,
+    ) -> None:
+        """Fetch the PDF slice starting at *start_page* and cache it.
 
-        On completion it chains a prefetch of the following slice so the cache
-        stays one slice ahead of what the user has revealed.
+        ``chain=True`` keeps one slice ahead by prefetching the slice that
+        follows this one (the "Load more ↓" path); ``chain=False`` fetches
+        just this slice (used for the slice above the window so "Load more
+        ↑" is instant).  After a page seek ``paging_generation`` no longer
+        matches, and stale slices are discarded instead of repopulating the
+        cache.
         """
         loaded = self.loaded_documents.get(source)
         if loaded is None or not loaded.is_paged:
             return
-        if batch_index in loaded.pending or batch_index in loaded.batch_cache:
+        if start_page < 1:
             return
-        if loaded.total_pages and batch_index * loaded.batch_size >= loaded.total_pages:
+        if start_page in loaded.batch_cache or start_page in loaded.pending:
+            return
+        if start_page in loaded.prefetch_events:
+            return  # another worker already reserved this exact slice
+        if loaded.total_pages and start_page > loaded.total_pages:
             return
 
-        start = batch_index * loaded.batch_size + 1
-        end = start + loaded.batch_size - 1
+        batch_size = max(1, loaded.batch_size)
+        end = start_page + batch_size - 1 if end_page is None else end_page
+        end = max(start_page, end)
         if loaded.total_pages:
             end = min(end, loaded.total_pages)
 
+        generation = loaded.paging_generation
         domain_id = loaded.domain_id
         docling_queue = self._docling_queue()
 
+        # Reserve synchronously (before the first await) so concurrent
+        # prefetch/load callers coalesce instead of queueing duplicates.
+        done_event = asyncio.Event()
+        loaded.prefetch_events[start_page] = done_event
+        handle: Any = None
+
         def on_complete(status: TaskStatus, payload: Any) -> None:
+            # A seek moved the window — discard slices from the old one.
+            if generation != loaded.paging_generation:
+                return
             if status == TaskStatus.SUCCESS and isinstance(payload, StructuredDocument):
-                loaded.batch_cache[batch_index] = payload
-                # Keep one slice ahead: prefetch the next one.
-                self.run_worker(
-                    self._prefetch_batch(source, batch_index + 1),
-                    name=f"prefetch_{source}_{batch_index + 1}",
-                )
-            elif status in (TaskStatus.FAILURE, TaskStatus.REVOKED, TaskStatus.CANCELLED):
-                loaded.pending.pop(batch_index, None)
+                loaded.batch_cache[start_page] = payload
 
         try:
             handle = await self.presenter.parse_document(
                 source=source,
                 domain_id=domain_id,
-                page_range=(start, end),
+                page_range=(start_page, end),
                 queue=docling_queue,
                 on_complete=on_complete,
             )
-            loaded.pending[batch_index] = handle
+            if generation != loaded.paging_generation:
+                # Superseded while submitting — drop it so an abandoned
+                # conversion doesn't clog the shared Docling worker.
+                task_id = getattr(handle, "task_id", "")
+                if task_id:
+                    with contextlib.suppress(Exception):
+                        await self.presenter.cancel_task(task_id)
+                return
+            loaded.pending[start_page] = handle
+            await handle.wait()
+
+            # Keep one slice ahead of the revealed window — but never past
+            # an empty slice (with no page count that would loop forever).
+            cached = loaded.batch_cache.get(start_page)
+            if (
+                chain
+                and generation == loaded.paging_generation
+                and cached is not None
+                and (cached.raw_markdown or "").strip()
+            ):
+                next_start = start_page + batch_size
+                if not loaded.total_pages or next_start <= loaded.total_pages:
+                    self.run_worker(
+                        self._prefetch_batch(source, next_start),
+                        name=f"prefetch_{source}_{next_start}",
+                    )
         except Exception as exc:
-            logger.warning("Prefetch of slice %d for %s failed: %s", batch_index, source, exc)
+            logger.warning(
+                "Prefetch of the slice at page %d for %s failed: %s",
+                start_page,
+                source,
+                exc,
+            )
+        finally:
+            if handle is not None and loaded.pending.get(start_page) is handle:
+                loaded.pending.pop(start_page, None)
+            if loaded.prefetch_events.get(start_page) is done_event:
+                loaded.prefetch_events.pop(start_page, None)
+            done_event.set()
+
+    async def _acquire_slice(
+        self,
+        source: str,
+        loaded: LoadedDocument,
+        start_page: int,
+        *,
+        end_page: int | None = None,
+    ) -> StructuredDocument | None:
+        """Return the PDF slice starting at *start_page*, fetching it if needed.
+
+        Waits for an in-flight prefetch of the same slice first.  Returns
+        ``None`` when the slice is unavailable (the fetch failed) or the
+        window moved (a page seek) while it was in flight.
+        """
+        generation = loaded.paging_generation
+        event = loaded.prefetch_events.get(start_page)
+        if event is not None:
+            await event.wait()
+        elif start_page not in loaded.batch_cache:
+            await self._prefetch_batch(
+                source, start_page, end_page=end_page, chain=False
+            )
+        if generation != loaded.paging_generation:
+            return None
+        return loaded.batch_cache.pop(start_page, None)
+
+    async def _cancel_pending_prefetches(self, loaded: LoadedDocument) -> None:
+        """Revoke in-flight prefetches for *loaded* and unblock waiters."""
+        old_handles = list(loaded.pending.values())
+        loaded.pending.clear()
+        for event in loaded.prefetch_events.values():
+            with contextlib.suppress(Exception):
+                event.set()
+        loaded.prefetch_events.clear()
+        for handle in old_handles:
+            task_id = getattr(handle, "task_id", "")
+            if task_id:
+                with contextlib.suppress(Exception):
+                    await self.presenter.cancel_task(task_id)
 
     async def _load_more(self, source: str) -> None:
-        """Append the next prefetched (or in-flight) PDF slice to the document."""
+        """Append the next PDF slice below the visible window."""
         loaded = self.loaded_documents.get(source)
         if loaded is None or not loaded.is_paged:
             return
+        if loaded.total_pages and loaded.rendered_pages >= loaded.total_pages:
+            loaded.paging_complete = True
+            self._update_pager(source)
+            return
 
-        batch_index = loaded.next_batch
-        if batch_index not in loaded.batch_cache:
-            if batch_index in loaded.pending:
-                await loaded.pending[batch_index].wait()
-            else:
-                start = batch_index * loaded.batch_size + 1
-                end = start + loaded.batch_size - 1
-                if loaded.total_pages:
-                    end = min(end, loaded.total_pages)
-                try:
-                    handle = await self.presenter.parse_document(
-                        source=source,
-                        domain_id=loaded.domain_id,
-                        page_range=(start, end),
-                        queue=self._docling_queue(),
-                    )
-                    await handle.wait()
-                except Exception as exc:
-                    logger.warning("Load-more slice %d failed: %s", batch_index, exc)
-                    return
-                if handle.status == TaskStatus.SUCCESS and isinstance(
-                    handle.result, StructuredDocument
-                ):
-                    loaded.batch_cache[batch_index] = handle.result
-                else:
-                    return
-
-        batch = loaded.batch_cache.pop(batch_index, None)
+        start_page = loaded.rendered_pages + 1
+        batch = await self._acquire_slice(source, loaded, start_page)
         if batch is None:
             return
         if not (batch.raw_markdown or "").strip():
             # Empty slice => end of document (e.g. unknown total_pages).
-            loaded.next_batch = batch_index + 1
+            loaded.paging_complete = True
             self._update_pager(source)
             return
 
+        pages_in_batch = int(batch.metadata.get("pages_in_batch") or loaded.batch_size)
         # Extend the rendered document and refresh the agent context.
         loaded.structured.raw_markdown += "\n\n" + batch.raw_markdown
         loaded.structured.tables.extend(batch.tables)
-        loaded.rendered_pages += int(batch.metadata.get("pages_in_batch") or loaded.batch_size)
-        loaded.next_batch = batch_index + 1
+        loaded.rendered_pages = start_page + pages_in_batch - 1
+        loaded.next_batch = loaded.rendered_pages // max(1, loaded.batch_size)
 
         domain_id = loaded.domain_id
         self.doc_context = get_domain(domain_id).context_for(loaded.structured)
@@ -1245,11 +1462,164 @@ class SqwakvoxApp(App[None]):
         self._update_pager(source)
 
         # Make sure the following slice is already being prefetched.
-        if batch_index + 1 not in loaded.pending and batch_index + 1 not in loaded.batch_cache:
+        next_start = loaded.rendered_pages + 1
+        if (
+            (not loaded.total_pages or next_start <= loaded.total_pages)
+            and next_start not in loaded.batch_cache
+            and next_start not in loaded.pending
+        ):
             self.run_worker(
-                self._prefetch_batch(source, batch_index + 1),
-                name=f"prefetch_{source}_{batch_index + 1}",
+                self._prefetch_batch(source, next_start),
+                name=f"prefetch_{source}_{next_start}",
             )
+
+    async def _load_previous(self, source: str) -> None:
+        """Prepend the PDF slice immediately above the visible window."""
+        loaded = self.loaded_documents.get(source)
+        if loaded is None or not loaded.is_paged:
+            return
+        if loaded.window_start <= 1:
+            return
+
+        batch_size = max(1, loaded.batch_size)
+        end_page = loaded.window_start - 1
+        start_page = max(1, end_page - batch_size + 1)
+
+        batch = await self._acquire_slice(
+            source, loaded, start_page, end_page=end_page
+        )
+        if batch is None or not (batch.raw_markdown or "").strip():
+            return
+
+        loaded.structured.raw_markdown = (
+            batch.raw_markdown + "\n\n" + loaded.structured.raw_markdown
+        )
+        loaded.structured.tables = [*batch.tables, *loaded.structured.tables]
+        loaded.window_start = start_page
+
+        domain_id = loaded.domain_id
+        self.doc_context = get_domain(domain_id).context_for(loaded.structured)
+        render_pane = self.query_one("#render-pane", DocumentRenderPane)
+        render_pane.update_document(loaded.structured, domain_id)
+        self._update_pager(source)
+
+        # Keep one earlier slice prefetched so repeated ↑ is instant.
+        if start_page > 1:
+            prev_end = start_page - 1
+            prev_start = max(1, prev_end - batch_size + 1)
+            if prev_start not in loaded.batch_cache and prev_start not in loaded.pending:
+                self.run_worker(
+                    self._prefetch_batch(
+                        source, prev_start, end_page=prev_end, chain=False
+                    ),
+                    name=f"prefetch_{source}_{prev_start}_up",
+                )
+
+    async def _seek_page(self, source: str, page: int) -> None:
+        """Replace the visible window with the slice starting at *page*.
+
+        Mirrors the web presenter's ``sqwakvox_presenter_seek_page``: the
+        new window holds *page* plus the following pages, earlier pages are
+        dropped, and prefetches for the old window are discarded.
+        """
+        loaded = self.loaded_documents.get(source)
+        if loaded is None or not loaded.is_paged:
+            return
+        try:
+            page = int(page)
+        except (TypeError, ValueError):
+            page = 0
+        if page < 1:
+            self.write_chat_message(
+                "[bold yellow]Enter a page number of 1 or more.[/bold yellow]",
+                persist=False,
+            )
+            return
+        if loaded.total_pages and page > loaded.total_pages:
+            self.write_chat_message(
+                f"[bold yellow]Page {page} is beyond the last page "
+                f"({loaded.total_pages}).[/bold yellow]",
+                persist=False,
+            )
+            return
+
+        window = max(1, loaded.batch_size)
+
+        # Drop the old window and stop its prefetches so abandoned
+        # conversions don't repopulate the cache or clog the worker.
+        loaded.paging_generation += 1
+        await self._cancel_pending_prefetches(loaded)
+        loaded.batch_cache.clear()
+        loaded.paging_complete = False
+
+        batch = await self._acquire_slice(
+            source, loaded, page, end_page=page + window - 1
+        )
+        if batch is None:
+            self.write_chat_message(
+                f"[bold red]Could not load page {page}.[/bold red]",
+                persist=False,
+            )
+            return
+        if not (batch.raw_markdown or "").strip():
+            loaded.paging_complete = True
+            self._update_pager(source)
+            self.write_chat_message(
+                f"[bold yellow]No content found at page {page}.[/bold yellow]",
+                persist=False,
+            )
+            return
+
+        pages_in_batch = int(batch.metadata.get("pages_in_batch") or window)
+        loaded.window_start = page
+        loaded.rendered_pages = page + pages_in_batch - 1
+        loaded.next_batch = loaded.rendered_pages // max(1, loaded.batch_size)
+        loaded.structured.raw_markdown = batch.raw_markdown
+        loaded.structured.tables = list(batch.tables)
+
+        domain_id = loaded.domain_id
+        self.doc_context = get_domain(domain_id).context_for(loaded.structured)
+        render_pane = self.query_one("#render-pane", DocumentRenderPane)
+        render_pane.update_document(loaded.structured, domain_id)
+        self._update_pager(source)
+
+        # Keep one slice ahead below the new window, and one above it.
+        if not loaded.total_pages or loaded.rendered_pages < loaded.total_pages:
+            next_start = loaded.rendered_pages + 1
+            self.run_worker(
+                self._prefetch_batch(source, next_start),
+                name=f"prefetch_{source}_{next_start}",
+            )
+        if page > 1:
+            prev_end = page - 1
+            prev_start = max(1, prev_end - window + 1)
+            self.run_worker(
+                self._prefetch_batch(source, prev_start, end_page=prev_end, chain=False),
+                name=f"prefetch_{source}_{prev_start}_up",
+            )
+
+    def _handle_seek(self) -> None:
+        """Jump the visible window to the page typed into the seek field."""
+        source = self._active_source()
+        loaded = self.loaded_documents.get(source or "")
+        if source is None or loaded is None or not loaded.is_paged:
+            return
+        raw = self.query_one("#seek-input", Input).value.strip()
+        if not raw:
+            return
+        try:
+            page = int(raw)
+        except ValueError:
+            page = 0
+        if page < 1:
+            self.write_chat_message(
+                "[bold yellow]Enter a page number of 1 or more.[/bold yellow]",
+                persist=False,
+            )
+            return
+        self.run_worker(
+            self._seek_page(source, page), name=f"seek_{source}_{page}"
+        )
 
     def _on_parse_failure(self, error_message: str) -> None:
         # Note: is_parsing is cleared by _finish_parse once *all* in-flight
@@ -1540,6 +1910,8 @@ class SqwakvoxApp(App[None]):
         if doc_source:
             with contextlib.suppress(Exception):
                 self.query_one("#doc-source", Input).value = doc_source
+            with contextlib.suppress(Exception):
+                self.query_one("#seek-input", Input).value = ""
 
         # Update center rendering pane with the domain's renderer
         render_pane = self.query_one("#render-pane", DocumentRenderPane)
@@ -1617,7 +1989,12 @@ class SqwakvoxApp(App[None]):
                 action="SUCCESS",
             )
 
-        self.query_one("#chat-input", Input).focus()
+        # Never focus a hidden chat input while the chat column is collapsed.
+        if self.chat_collapsed:
+            with contextlib.suppress(Exception):
+                self.query_one("#render-pane", DocumentRenderPane).focus()
+        else:
+            self.query_one("#chat-input", Input).focus()
         self._update_ui_state()
 
     def on_tabs_tab_activated(self, event: Tabs.TabActivated) -> None:

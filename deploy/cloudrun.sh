@@ -12,6 +12,7 @@
 #   ./deploy/cloudrun.sh off          # Throttle CPU & scale to 0 between demos ($0 idle)
 #   ./deploy/cloudrun.sh down         # Delete Cloud Run service completely (keeps image)
 #   ./deploy/cloudrun.sh status       # Show current Cloud Run service status
+#   ./deploy/cloudrun.sh telemetry [YYYY-MM-DD]  # Pull & summarize GCS telemetry spans
 
 set -euo pipefail
 
@@ -328,7 +329,7 @@ cmd_up() {
 
     # TELEMETRY_BUCKET/PREFIX and DATA_DIR are already pinned in env_vars above;
     # only forward opt-in extras from the caller's environment.
-    for var in GEMINI_API_KEY OPENAI_API_KEY ANTHROPIC_API_KEY DEEPSEEK_API_KEY SQWAKVOX_WEB_TOKEN SQWAKVOX_TELEMETRY_EXPORTER SQWAKVOX_TELEMETRY_GCS_COMPRESS SQWAKVOX_TELEMETRY_GCS_TIMEOUT OTEL_BSP_SCHEDULE_DELAY; do
+    for var in GEMINI_API_KEY OPENAI_API_KEY ANTHROPIC_API_KEY DEEPSEEK_API_KEY SQWAKVOX_WEB_TOKEN SQWAKVOX_TELEMETRY_EXPORTER SQWAKVOX_TELEMETRY_GCS_COMPRESS SQWAKVOX_TELEMETRY_GCS_TIMEOUT SQWAKVOX_TELEMETRY_INCLUDE_NOISE OTEL_BSP_SCHEDULE_DELAY; do
         if [[ -n "${!var:-}" ]]; then
             env_vars+=("${var}=${!var}")
         fi
@@ -405,6 +406,78 @@ cmd_status() {
         --project="${proj}"
 }
 
+cmd_telemetry() {
+    local date_filter="${1:-}"
+    local pull_dir="${SQWAKVOX_TELEMETRY_PULL_DIR:-/tmp/sqwakvox-telemetry}"
+    local src_uri="gs://${TELEMETRY_BUCKET}/${TELEMETRY_PREFIX}"
+    local target_dir="${pull_dir}/spans"
+    if [[ -n "${date_filter}" ]]; then
+        src_uri="${src_uri}/dt=${date_filter}"
+        target_dir="${target_dir}/dt=${date_filter}"
+    fi
+    mkdir -p "${target_dir}"
+    echo "==> Syncing telemetry from ${src_uri} -> ${target_dir} ..."
+    gcloud storage rsync -r "${src_uri}" "${target_dir}"
+
+    local py_bin="python3"
+    if [[ -x ".venv/bin/python" ]]; then
+        py_bin=".venv/bin/python"
+    fi
+    "${py_bin}" - "${target_dir}" <<'PY'
+import gzip, json, sys
+from collections import Counter, defaultdict
+from pathlib import Path
+from statistics import median
+
+root = Path(sys.argv[1])
+files = sorted(list(root.rglob("*.jsonl.gz")) + list(root.rglob("*.jsonl")))
+spans = []
+for f in files:
+    opener = gzip.open if f.suffix == ".gz" else open
+    with opener(f, "rt", encoding="utf-8") as fh:
+        for line in fh:
+            if line.strip():
+                spans.append(json.loads(line))
+
+print(f"\nFiles: {len(files)}  Total spans: {len(spans)}")
+if not spans:
+    sys.exit(0)
+spans.sort(key=lambda s: s.get("start_time") or "")
+print(f"Window (UTC): {spans[0].get('start_time')} -> {spans[-1].get('start_time')}")
+print("Revisions:", dict(Counter((s.get("resource") or {}).get("faas.version", "?") for s in spans)))
+print("Roles:    ", dict(Counter((s.get("resource") or {}).get("sqwakvox.process.role", "?") for s in spans)))
+
+by_name = defaultdict(list)
+for s in spans:
+    by_name[s["name"]].append(s)
+
+print(f"\n{'Span':42s} {'Cnt':>5s} {'Err':>4s} {'p50(ms)':>10s} {'p95(ms)':>10s} {'max(ms)':>10s}")
+for name, items in sorted(by_name.items(), key=lambda kv: -len(kv[1])):
+    durs = sorted(float(x.get("duration_ms") or 0.0) for x in items)
+    errs = sum(1 for x in items if x.get("status") == "ERROR")
+    p50 = median(durs)
+    p95 = durs[int(0.95 * (len(durs) - 1))]
+    print(f"{name:42s} {len(items):5d} {errs:4d} {p50:10.1f} {p95:10.1f} {durs[-1]:10.1f}")
+
+converts = by_name.get("sqwakvox.document.convert", [])
+if converts:
+    print(f"\nRecent document conversions (last {min(10, len(converts))}):")
+    for s in converts[-10:]:
+        a = s.get("attributes") or {}
+        print(
+            f"  [{(s.get('start_time') or '')[:19]}] {a.get('file_name') or a.get('source')} "
+            f"pages={a.get('page_range')} cache={a.get('cache_hit')} "
+            f"dur={s.get('duration_ms', 0)/1000:.2f}s"
+        )
+
+errs = [s for s in spans if s.get("status") == "ERROR"]
+if errs:
+    print(f"\nErrors ({len(errs)}):")
+    for s in errs[-10:]:
+        print(f"  [{(s.get('start_time') or '')[:19]}] {s['name']} desc={s.get('status_description')!r}")
+PY
+}
+
 case "${1:-help}" in
     build)       cmd_build ;;
     local)       cmd_local ;;
@@ -415,7 +488,8 @@ case "${1:-help}" in
     off)         cmd_off ;;
     down)        cmd_down ;;
     status)      cmd_status ;;
+    telemetry)   cmd_telemetry "${2:-}" ;;
     *)
-        sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'
+        sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'
         ;;
 esac

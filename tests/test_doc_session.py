@@ -255,6 +255,70 @@ def test_seek_page_replaces_the_visible_window(session: DocSession, tmp_path: Pa
     info = session.page_info(str(pdf))
     assert info["start_page"] == 12
     assert info["end_page"] == 25
+    assert info["has_previous"] is True
+
+
+def test_load_more_up_prepends_earlier_pages_without_overlap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("SQWAKVOX_MANAGED_WORKERS", "0")
+    requested_ranges: list[tuple[int, int]] = []
+
+    class RangeTaggedPresenter(FakePresenter):
+        async def parse_document(self, source: str, page_range: Any = None, **kw: Any) -> _Handle:
+            if page_range is not None:
+                requested_ranges.append(tuple(page_range))
+            doc = StructuredDocument(
+                file_name=Path(source).name,
+                raw_markdown=f"SLICE {page_range}",
+                tables=[],
+            )
+            if page_range is not None:
+                doc.metadata["page_range"] = list(page_range)
+                doc.metadata["pages_in_batch"] = page_range[1] - page_range[0] + 1
+                doc.metadata["total_pages"] = 25
+            on_complete = kw.get("on_complete")
+            if on_complete is not None:
+                on_complete(TaskStatus.SUCCESS, doc)
+            return _Handle(doc)
+
+    pdf = tmp_path / "big.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n")
+
+    sess = DocSession(presenter=RangeTaggedPresenter(), chat_log_dir=tmp_path)
+    try:
+        sess.open_document_and_wait(str(pdf))
+        # Jump to page 15 -> window is 15..24.
+        sess.seek_page_and_wait(str(pdf), 15, window=10)
+        assert sess.page_info(str(pdf))["start_page"] == 15
+        assert sess.page_info(str(pdf))["end_page"] == 24
+        assert sess.page_info(str(pdf))["has_previous"] is True
+
+        # Load upward -> should prepend pages 5..14 (non-overlapping).
+        up1 = sess.load_more_and_wait(str(pdf), direction="up")
+        assert up1["ok"] is True
+        assert up1["direction"] == "up"
+        assert up1["pages_added"] == 10
+        assert sess.page_info(str(pdf))["start_page"] == 5
+        assert sess.page_info(str(pdf))["end_page"] == 24
+        assert (5, 14) in requested_ranges
+        md = sess.loaded_documents[str(pdf)].structured.raw_markdown
+        assert md.index("SLICE (5, 14)") < md.index("SLICE (15, 24)")
+
+        # Load upward again -> only pages 1..4 remain (clamped to page 1).
+        up2 = sess.load_more_and_wait(str(pdf), direction="up")
+        assert up2["ok"] is True
+        assert up2["pages_added"] == 4
+        assert sess.page_info(str(pdf))["start_page"] == 1
+        assert sess.page_info(str(pdf))["has_previous"] is False
+        assert (1, 4) in requested_ranges
+
+        # Already at page 1 -> clean no-op.
+        up3 = sess.load_more_and_wait(str(pdf), direction="up")
+        assert up3["ok"] is True
+        assert up3["pages_added"] == 0
+    finally:
+        sess.close()
 
 
 def test_seek_page_past_the_last_page_is_rejected(session: DocSession, tmp_path: Path) -> None:
@@ -443,6 +507,37 @@ def test_chat_history_survives_a_reload(session: DocSession) -> None:
         assert any(m["text"] == "persisted question" for m in messages)
     finally:
         reloaded.close()
+
+
+def test_session_getters_and_registries_defend_against_mutation(session: DocSession) -> None:
+    from dataclasses import FrozenInstanceError
+
+    from sqwakvox.domains import get_domain
+    from sqwakvox.models import ModelProvider
+
+    session.open_document_and_wait("/tmp/report.pdf")
+
+    # Mutating returned document_detail metadata must not corrupt live document state.
+    detail = session.document_detail("/tmp/report.pdf")
+    detail["metadata"]["data_store"]["Injected"] = "999"
+    assert "Injected" not in session.data_store("/tmp/report.pdf")
+
+    # Mutating returned chat entries must not corrupt internal chat history.
+    entry = session.append_chat("/tmp/report.pdf", "user", "original")
+    entry["text"] = "mutated"
+    messages = session.chat("/tmp/report.pdf")
+    assert messages[-1]["text"] == "original"
+    messages[-1]["text"] = "also mutated"
+    assert session.chat("/tmp/report.pdf")[-1]["text"] == "original"
+
+    # Shared domain profiles and ModelProvider.MAP are immutable.
+    domain = get_domain("swe")
+    with pytest.raises(FrozenInstanceError):
+        domain.display_name = "tampered"  # type: ignore[misc]
+    with pytest.raises(TypeError):
+        ModelProvider.MAP["evil"] = {}  # type: ignore[index]
+    with pytest.raises(TypeError):
+        ModelProvider.MAP["openai:gpt-5.5-high"]["env_var"] = "HACK"  # type: ignore[index]
 
 
 # ---------------------------------------------------------------- cross-validation

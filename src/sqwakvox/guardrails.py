@@ -260,8 +260,26 @@ class AnyGuardrailValidator:
         cls._initialized = True
         try:
             from any_guardrail import AnyGuardrail, GuardrailName
+            from any_guardrail.providers.huggingface import HuggingFaceProvider
 
-            cls._guardrail_instance = AnyGuardrail.create(GuardrailName.INJECGUARD)
+            provider = None
+            try:
+                from huggingface_hub import snapshot_download
+
+                local_dir = snapshot_download("leolee99/InjecGuard", local_files_only=True)
+                provider = HuggingFaceProvider(
+                    trust_remote_code=True,
+                    tokenizer_id=local_dir,
+                    model_kwargs={"local_files_only": True},
+                )
+                logger.info("Loading InjecGuard from local cache: %s", local_dir)
+            except Exception:
+                # Not cached locally yet — allow standard online download.
+                provider = None
+
+            cls._guardrail_instance = AnyGuardrail.create(
+                GuardrailName.INJECGUARD, provider=provider
+            )
             logger.info("Mozilla any-guardrail successfully initialized with INJECGUARD.")
         except Exception as e:
             logger.warning(

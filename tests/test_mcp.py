@@ -250,3 +250,65 @@ def test_tool_names() -> None:
 
 def test_tool_names_empty() -> None:
     assert tool_names([]) == []
+
+
+def test_celery_disables_stdout_redirection_for_stdio_mcp() -> None:
+    from sqwakvox.backend.celery_app import celery_app
+
+    assert celery_app.conf.worker_redirect_stdouts is False
+
+
+def test_ensure_stdio_errlog_repairs_proxy_without_fileno() -> None:
+    from mcp.client.stdio import stdio_client
+
+    from sqwakvox.mcp import _ensure_stdio_errlog_has_fileno, _has_valid_fileno
+
+    fn = getattr(stdio_client, "__wrapped__", stdio_client)
+    original_defaults = fn.__defaults__
+
+    class _FakeLoggingProxy:
+        pass
+
+    try:
+        fn.__defaults__ = (_FakeLoggingProxy(),)
+        assert not _has_valid_fileno(fn.__defaults__[0])
+        _ensure_stdio_errlog_has_fileno()
+        assert _has_valid_fileno(fn.__defaults__[0])
+    finally:
+        fn.__defaults__ = original_defaults
+
+
+@pytest.mark.asyncio
+async def test_connected_tools_skips_broken_server_and_keeps_healthy_siblings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from contextlib import asynccontextmanager
+
+    from sqwakvox.mcp import MCPConnectionError, connected_tools
+
+    class FakeClient:
+        def __init__(self, connections: dict[str, object]) -> None:
+            self.connections = connections
+
+        @asynccontextmanager
+        async def session(self, server_name: str):
+            if server_name == "server_0":
+                raise RuntimeError("broken optional server")
+            yield f"session:{server_name}"
+
+    async def fake_load(session: str, server_name: str) -> list[StructuredTool]:
+        return [_tool(f"tool_from_{server_name}")]
+
+    monkeypatch.setattr("langchain_mcp_adapters.client.MultiServerMCPClient", FakeClient)
+    monkeypatch.setattr("langchain_mcp_adapters.tools.load_mcp_tools", fake_load)
+
+    # One broken + one healthy -> yields healthy server's tools.
+    async with connected_tools(
+        [MCPStdio(command="bad", args=[]), MCPStdio(command="good", args=[])]
+    ) as tools:
+        assert [t.name for t in tools] == ["tool_from_server_1"]
+
+    # All servers broken -> raises MCPConnectionError.
+    with pytest.raises(MCPConnectionError, match="All 1 MCP server"):
+        async with connected_tools([MCPStdio(command="bad", args=[])]):
+            pass

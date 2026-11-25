@@ -56,6 +56,55 @@ DEFAULT_GCS_SCHEDULE_DELAY_MS = 30_000
 #: Default GCS upload timeout (seconds), bounded to fit Cloud Run's 10s SIGTERM window.
 DEFAULT_GCS_UPLOAD_TIMEOUT_SEC = 10.0
 
+#: Presenter polling tools whose successful spans are high-volume noise.
+_NOISY_POLLING_TOOLS = frozenset({"sqwakvox_presenter_events", "sqwakvox_presenter_status"})
+
+
+def _is_noisy_span(span: ReadableSpan) -> bool:
+    """Return True for high-volume non-error plumbing/polling spans.
+
+    Error spans are never dropped. Set ``SQWAKVOX_TELEMETRY_INCLUDE_NOISE=true``
+    to export every FastMCP internal and UI-polling span verbatim.
+    """
+    status = getattr(span, "status", None)
+    if status is not None and status.status_code == StatusCode.ERROR:
+        return False
+
+    scope = getattr(span, "instrumentation_scope", None)
+    if scope is not None and getattr(scope, "name", "") == "fastmcp":
+        # FastMCP emits client+server tools/call and tools/list spans on every
+        # in-process call, duplicating our own sqwakvox.mcp.* spans.
+        return True
+
+    if span.name == "sqwakvox.mcp.presenter":
+        attrs = getattr(span, "attributes", None) or {}
+        if attrs.get("tool") in _NOISY_POLLING_TOOLS:
+            return True
+
+    return False
+
+
+class _FilteringSpanProcessor(SpanProcessor):
+    """Wrap a SpanProcessor and drop low-value noise spans before batching."""
+
+    def __init__(self, inner: SpanProcessor, *, filter_noise: bool = True) -> None:
+        self._inner = inner
+        self._filter_noise = filter_noise
+
+    def on_start(self, span: Any, parent_context: Any = None) -> None:
+        self._inner.on_start(span, parent_context=parent_context)
+
+    def on_end(self, span: ReadableSpan) -> None:
+        if self._filter_noise and _is_noisy_span(span):
+            return
+        self._inner.on_end(span)
+
+    def shutdown(self) -> None:
+        self._inner.shutdown()
+
+    def force_flush(self, timeout_millis: int = 30000) -> bool:
+        return self._inner.force_flush(timeout_millis=timeout_millis)
+
 
 def _parse_bool_env(name: str, default: bool) -> bool:
     raw = os.environ.get(name)
@@ -302,8 +351,12 @@ def _build_resource(
 
 
 def _add_span_processor(tracer_provider: TracerProvider, processor: SpanProcessor) -> None:
-    tracer_provider.add_span_processor(processor)
-    _registered_span_processors.append(processor)
+    include_noise = _parse_bool_env("SQWAKVOX_TELEMETRY_INCLUDE_NOISE", default=False)
+    wrapped: SpanProcessor = (
+        processor if include_noise else _FilteringSpanProcessor(processor, filter_noise=True)
+    )
+    tracer_provider.add_span_processor(wrapped)
+    _registered_span_processors.append(wrapped)
 
 
 def setup_telemetry(

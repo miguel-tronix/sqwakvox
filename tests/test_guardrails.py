@@ -128,3 +128,43 @@ def test_cross_validate_table_mixed_units() -> None:
     col_name, _expected, _actual, is_valid = results[0]
     assert col_name == "Financials"
     assert is_valid is False
+
+
+def test_any_guardrail_validator_prefers_local_cache_when_present(monkeypatch) -> None:
+    from unittest.mock import MagicMock
+
+    from sqwakvox.guardrails import AnyGuardrailValidator
+
+    captured: dict[str, object] = {}
+
+    class FakeProvider:
+        def __init__(self, **kwargs: object) -> None:
+            captured["provider_kwargs"] = kwargs
+
+    fake_guardrail = MagicMock()
+
+    def fake_create(name: object, provider: object = None) -> MagicMock:
+        captured["name"] = name
+        captured["provider"] = provider
+        return fake_guardrail
+
+    monkeypatch.setattr(AnyGuardrailValidator, "_initialized", False)
+    monkeypatch.setattr(AnyGuardrailValidator, "_guardrail_instance", None)
+    monkeypatch.setattr(
+        "huggingface_hub.snapshot_download",
+        lambda repo_id, local_files_only=False: "/app/.cache/huggingface/injecguard"
+        if repo_id == "leolee99/InjecGuard" and local_files_only
+        else (_ for _ in ()).throw(AssertionError("unexpected call")),
+    )
+    monkeypatch.setattr("any_guardrail.providers.huggingface.HuggingFaceProvider", FakeProvider)
+    monkeypatch.setattr("any_guardrail.AnyGuardrail.create", fake_create)
+
+    AnyGuardrailValidator._try_init()
+
+    assert AnyGuardrailValidator._guardrail_instance is fake_guardrail
+    assert isinstance(captured["provider"], FakeProvider)
+    assert captured["provider_kwargs"] == {
+        "trust_remote_code": True,
+        "tokenizer_id": "/app/.cache/huggingface/injecguard",
+        "model_kwargs": {"local_files_only": True},
+    }
