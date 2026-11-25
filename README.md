@@ -23,7 +23,7 @@ Sqwakvox is a multi-document assistant application with terminal and web interfa
 
 ## Features
 
-- **3-Pane TUI**: The terminal interface provides a sidebar, a document render pane, and a chat log.
+- **3-Pane TUI**: The terminal interface provides a sidebar, a document render pane, and a chat log. Large PDFs load page slice by page slice: jump to any page, load earlier or later slices with the pager buttons, and collapse the chat panel to a narrow rail (`Ctrl+T`).
 - **Web Presenter**: The browser interface provides the same 3-pane layout. It displays live progress through Server-Sent Events (SSE). 24 MCP tools expose the presenter API.
 - **Multiple expert types**: Select the agent expert type when you load a document. Each document tab keeps its own domain rules, prompts, and tools.
 - **Docling Integration**: The application parses local PDF, EPUB, and Markdown files and remote URLs. It can crawl documentation websites for multi-page documentation.
@@ -267,6 +267,7 @@ Available web endpoints: `GET /`, `GET /healthz`, `GET /api/tools`, `POST /api/c
 | `Tab` | Cycle through panes (source → render → chat) |
 | `Up/Down` | Scroll focused pane |
 | `Ctrl+X` | Run numerical cross-validation on loaded tables |
+| `Ctrl+T` | Collapse or expand the chat panel |
 
 In the web interface: `Enter` sends a chat message, `Shift+Enter` adds a newline, and `F2` opens the MCP tool console.
 

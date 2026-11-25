@@ -1,7 +1,7 @@
 import asyncio
 
 import pytest
-from textual.widgets import ListView, Select, Tab, Tabs
+from textual.widgets import Button, Input, Label, ListView, RichLog, Select, Tab, Tabs
 
 from sqwakvox.app import SqwakvoxApp
 from sqwakvox.models import StructuredDocument
@@ -405,4 +405,252 @@ async def test_doc_pager_row_height_and_tab_switching() -> None:
 
         assert container.styles.display == "block"
         assert agent_pane.styles.display == "none"
+
+
+# --------------------------------------------------------------------- #
+# Pager: seek, load earlier/later slices (mirrors the web presenter).
+# --------------------------------------------------------------------- #
+def _paged_doc(
+    file_name: str = "doc1.pdf",
+    *,
+    start: int = 1,
+    end: int = 10,
+    total: int | None = 50,
+) -> StructuredDocument:
+    """A document shaped like a controller PDF page slice."""
+    return StructuredDocument(
+        file_name=file_name,
+        raw_markdown=f"# pages {start}-{end}",
+        metadata={
+            "page_range": [start, end],
+            "pages_in_batch": end - start + 1,
+            "total_pages": total,
+        },
+    )
+
+
+def _stub_paged_parse(
+    monkeypatch: pytest.MonkeyPatch, app: SqwakvoxApp
+) -> list[tuple[int, int]]:
+    """Replace presenter.parse_document with a fake serving per-page slices."""
+    calls: list[tuple[int, int]] = []
+
+    class FakeHandle:
+        status = TaskStatus.SUCCESS
+        result = None
+        error = None
+        task_id = ""
+
+        async def wait(self, _timeout: float | None = None) -> TaskStatus:
+            return TaskStatus.SUCCESS
+
+    async def fake_parse(source: str, **kwargs):
+        page_range = kwargs.get("page_range") or (1, 10)
+        start, end = int(page_range[0]), int(page_range[1])
+        calls.append((start, end))
+        if kwargs.get("on_complete") is not None:
+            kwargs["on_complete"](TaskStatus.SUCCESS, _paged_doc(start=start, end=end))
+        return FakeHandle()
+
+    monkeypatch.setattr(app.presenter, "parse_document", fake_parse)
+    return calls
+
+
+async def _flush_workers(pilot, rounds: int = 8) -> None:
+    """Let chained prefetch workers run (each is scheduled as a new worker)."""
+    for _ in range(rounds):
+        await pilot.pause()
+
+
+@pytest.mark.asyncio
+async def test_pager_controls_activate_for_paged_documents(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Before a paged doc loads every pager control is disabled; after it
+    loads, ↓ and the seek field enable while ↑ stays off (window at page 1)."""
+    app = SqwakvoxApp()
+    async with app.run_test() as pilot:
+        assert app.query_one("#btn-load-more", Button).disabled
+        assert app.query_one("#btn-load-previous", Button).disabled
+        assert app.query_one("#seek-input", Input).disabled
+        assert app.query_one("#btn-seek", Button).disabled
+
+        _stub_paged_parse(monkeypatch, app)
+        app._on_parse_success(_paged_doc(), "doc1.pdf")
+        await _flush_workers(pilot)
+
+        assert not app.query_one("#btn-load-more", Button).disabled
+        assert app.query_one("#btn-load-previous", Button).disabled
+        assert str(app.query_one("#btn-load-previous", Button).label) == "At page 1"
+        assert not app.query_one("#seek-input", Input).disabled
+        assert not app.query_one("#btn-seek", Button).disabled
+
+        indicator = app.query_one("#page-indicator", Label)
+        assert "Pages 1-10 of 50" in str(indicator.content)
+
+
+@pytest.mark.asyncio
+async def test_seek_to_page_replaces_the_visible_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Seeking replaces the rendered window with the target page's slice
+    (the web presenter's ``sqwakvox_presenter_seek_page`` behaviour)."""
+    app = SqwakvoxApp()
+    async with app.run_test() as pilot:
+        _stub_paged_parse(monkeypatch, app)
+        app._on_parse_success(_paged_doc(), "doc1.pdf")
+        await _flush_workers(pilot)
+        loaded = app.loaded_documents["doc1.pdf"]
+        assert (loaded.window_start, loaded.rendered_pages) == (1, 10)
+
+        app.query_one("#seek-input", Input).value = "30"
+        app._handle_seek()
+        await _flush_workers(pilot)
+
+        assert (loaded.window_start, loaded.rendered_pages) == (30, 39)
+        # The old window is gone: only the new slice remains.
+        assert loaded.structured.raw_markdown == "# pages 30-39"
+        assert app.doc_context == "# pages 30-39"
+        indicator = app.query_one("#page-indicator", Label)
+        assert "Pages 30-39 of 50" in str(indicator.content)
+        # Earlier pages became loadable.
+        assert not app.query_one("#btn-load-previous", Button).disabled
+
+        # A page past the end is rejected without moving the window.
+        app.query_one("#seek-input", Input).value = "999"
+        app._handle_seek()
+        await _flush_workers(pilot)
+        assert (loaded.window_start, loaded.rendered_pages) == (30, 39)
+        assert loaded.structured.raw_markdown == "# pages 30-39"
+
+
+@pytest.mark.asyncio
+async def test_load_more_appends_the_next_slice(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """"Load more ↓" appends the following slice and advances the window end."""
+    app = SqwakvoxApp()
+    async with app.run_test() as pilot:
+        _stub_paged_parse(monkeypatch, app)
+        app._on_parse_success(_paged_doc(), "doc1.pdf")
+        await _flush_workers(pilot)
+        loaded = app.loaded_documents["doc1.pdf"]
+
+        await app._load_more("doc1.pdf")
+        await pilot.pause()
+
+        assert loaded.rendered_pages == 20
+        assert loaded.structured.raw_markdown == "# pages 1-10\n\n# pages 11-20"
+        indicator = app.query_one("#page-indicator", Label)
+        assert "Pages 1-20 of 50" in str(indicator.content)
+
+        # Keep loading until the window reaches the last page.
+        btn = app.query_one("#btn-load-more", Button)
+        for _ in range(10):
+            if btn.disabled:
+                break
+            await app._load_more("doc1.pdf")
+            await pilot.pause()
+
+        assert loaded.rendered_pages == 50
+        assert btn.disabled
+        assert str(btn.label) == "All pages ✓"
+
+
+@pytest.mark.asyncio
+async def test_load_previous_prepends_earlier_slices(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """"Load more ↑" prepends the slice above the window, moves the window
+    start up, and locks once page 1 is reached (web presenter parity)."""
+    app = SqwakvoxApp()
+    async with app.run_test() as pilot:
+        _stub_paged_parse(monkeypatch, app)
+        app._on_parse_success(_paged_doc(), "doc1.pdf")
+        await _flush_workers(pilot)
+        loaded = app.loaded_documents["doc1.pdf"]
+
+        app.query_one("#seek-input", Input).value = "30"
+        app._handle_seek()
+        await _flush_workers(pilot)
+
+        await app._load_previous("doc1.pdf")
+        await pilot.pause()
+
+        assert loaded.window_start == 20
+        # The window end is unchanged by loading earlier pages.
+        assert loaded.rendered_pages == 39
+        assert loaded.structured.raw_markdown == "# pages 20-29\n\n# pages 30-39"
+        indicator = app.query_one("#page-indicator", Label)
+        assert "Pages 20-39 of 50" in str(indicator.content)
+
+        # Page back to the start: 10-39, then 1-39 with ↑ disabled.
+        await app._load_previous("doc1.pdf")
+        await pilot.pause()
+        assert loaded.window_start == 10
+        assert loaded.structured.raw_markdown.startswith("# pages 10-19\n\n")
+
+        await app._load_previous("doc1.pdf")
+        await pilot.pause()
+        assert loaded.window_start == 1
+        assert loaded.structured.raw_markdown.startswith("# pages 1-9\n\n")
+        btn_up = app.query_one("#btn-load-previous", Button)
+        assert btn_up.disabled
+        assert str(btn_up.label) == "At page 1"
+
+
+# --------------------------------------------------------------------- #
+# Chat collapse / expand (mirrors the web presenter's chat toggle).
+# --------------------------------------------------------------------- #
+@pytest.mark.asyncio
+async def test_chat_collapse_and_expand(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Collapsing hides the chat into a 6-column rail with a restore button
+    and hands the space to the document pane; expanding brings it back."""
+    app = SqwakvoxApp()
+    async with app.run_test(size=(120, 40)) as pilot:
+        # A loaded document enables the chat input (it is focusable only then).
+        _stub_paged_parse(monkeypatch, app)
+        app._on_parse_success(_paged_doc(), "doc1.pdf")
+        await _flush_workers(pilot)
+
+        chat_log = app.query_one("#chat-log", RichLog)
+        header = app.query_one("#chat-header-row")
+        center = app.query_one("#center-column")
+        wide = chat_log.region.width
+        center_wide = center.region.width
+        assert wide > 10
+        assert not app.screen.has_class("chat-collapsed")
+
+        # Collapse via the header button (mouse path).
+        await pilot.click("#btn-collapse-chat")
+        await pilot.pause()
+
+        assert app.chat_collapsed
+        assert app.screen.has_class("chat-collapsed")
+        assert chat_log.styles.display == "none"
+        assert header.styles.display == "none"
+        # Narrow rail, restore button fits inside it, document gains the room.
+        assert app.query_one("#chat-column").region.width == 6
+        assert app.query_one("#btn-expand-chat").region.width == 6
+        assert center.region.width > center_wide
+
+        # Expand via the rail button (mouse path).
+        await pilot.click("#btn-expand-chat")
+        await pilot.pause()
+
+        assert not app.chat_collapsed
+        assert not app.screen.has_class("chat-collapsed")
+        assert chat_log.region.width == wide
+        assert app.query_one("#btn-expand-chat").styles.display == "none"
+
+        # Keyboard path: the toggle action flips the state, and focusing the
+        # chat input while collapsed expands the panel first.
+        app.action_toggle_chat()
+        await pilot.pause()
+        assert app.chat_collapsed
+
+        app.action_focus_chat_input()
+        await pilot.pause()
+        assert not app.chat_collapsed
+        assert app.focused is app.query_one("#chat-input", Input)
 
