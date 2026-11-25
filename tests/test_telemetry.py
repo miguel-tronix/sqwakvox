@@ -425,3 +425,104 @@ def test_agent_execution_telemetry_integration(mock_execute: MagicMock) -> None:
 
     assert res.success is True
     assert "$1000" in res.response
+
+
+def test_filtering_span_processor_drops_fastmcp_and_polling_noise_but_keeps_errors() -> None:
+    from sqwakvox.telemetry import _FilteringSpanProcessor
+
+    forwarded: list[Any] = []
+
+    class RecordingProcessor:
+        def on_start(self, span: Any, parent_context: Any = None) -> None:
+            pass
+
+        def on_end(self, span: Any) -> None:
+            forwarded.append(span.name)
+
+        def shutdown(self) -> None:
+            pass
+
+        def force_flush(self, timeout_millis: int = 30000) -> bool:
+            return True
+
+    def _mk(
+        name: str,
+        *,
+        scope: str = "sqwakvox",
+        attrs: dict[str, Any] | None = None,
+        status: StatusCode = StatusCode.OK,
+    ) -> MagicMock:
+        sp = MagicMock()
+        sp.name = name
+        sp.instrumentation_scope.name = scope
+        sp.attributes = attrs or {}
+        sp.status.status_code = status
+        return sp
+
+    proc = _FilteringSpanProcessor(RecordingProcessor(), filter_noise=True)  # type: ignore[arg-type]
+
+    # Dropped noise: FastMCP internal spans and successful polling presenter calls.
+    proc.on_end(_mk("tools/list", scope="fastmcp"))
+    proc.on_end(_mk("tools/call sqwakvox_presenter_events", scope="fastmcp"))
+    proc.on_end(
+        _mk("sqwakvox.mcp.presenter", attrs={"tool": "sqwakvox_presenter_events"})
+    )
+    proc.on_end(
+        _mk("sqwakvox.mcp.presenter", attrs={"tool": "sqwakvox_presenter_status"})
+    )
+
+    # Kept signal: real work AND any ERROR spans (even from fastmcp or polling).
+    proc.on_end(_mk("sqwakvox.document.convert"))
+    proc.on_end(
+        _mk("sqwakvox.mcp.presenter", attrs={"tool": "sqwakvox_presenter_seek_page"})
+    )
+    proc.on_end(_mk("tools/call broken", scope="fastmcp", status=StatusCode.ERROR))
+    proc.on_end(
+        _mk(
+            "sqwakvox.mcp.presenter",
+            attrs={"tool": "sqwakvox_presenter_events"},
+            status=StatusCode.ERROR,
+        )
+    )
+
+    assert forwarded == [
+        "sqwakvox.document.convert",
+        "sqwakvox.mcp.presenter",
+        "tools/call broken",
+        "sqwakvox.mcp.presenter",
+    ]
+
+
+def test_mcp_presenter_trace_marks_ok_false_as_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from sqwakvox import mcp_presenter
+
+    telemetry_file = tmp_path / "presenter_err.jsonl"
+    monkeypatch.delenv("SQWAKVOX_TELEMETRY_BUCKET", raising=False)
+    monkeypatch.delenv("SQWAKVOX_TELEMETRY_EXPORTER", raising=False)
+    setup_telemetry(file_path=telemetry_file, force=True)
+
+    out = mcp_presenter._trace(
+        "sqwakvox_presenter_seek_page",
+        lambda: json.dumps({"ok": False, "error": "Timed out seeking to the page."}),
+    )
+    assert json.loads(out)["ok"] is False
+
+    flush_telemetry()
+    shutdown_telemetry()
+
+    lines = [
+        json.loads(line)
+        for line in telemetry_file.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    seek_spans = [
+        s
+        for s in lines
+        if s["name"] == "sqwakvox.mcp.presenter"
+        and s["attributes"].get("tool") == "sqwakvox_presenter_seek_page"
+    ]
+    assert seek_spans
+    assert seek_spans[-1]["status"] == "ERROR"
+    assert "Timed out" in seek_spans[-1]["status_description"]

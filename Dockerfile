@@ -16,7 +16,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     SQWAKVOX_DOCLING_CONCURRENCY="1" \
     SQWAKVOX_DOC_WORKER_CONCURRENCY="1" \
     OMP_NUM_THREADS="2" \
-    MKL_NUM_THREADS="2"
+    MKL_NUM_THREADS="2" \
+    HF_HOME="/app/.cache/huggingface"
 
 # System dependencies:
 # - redis-server: in-container broker, result backend, and conversation memory
@@ -54,7 +55,13 @@ RUN NO_CUDA_ARGS=$(grep -oE '^name = "(nvidia-[^"]+|cuda-[^"]+|triton|torch|torc
         torch==2.12.0 torchvision==0.27.0 \
     && rm -rf /tmp/uv-cache
 
-# 2. Copy application code, MCP config, bundled seed skills, and lightweight sample PDFs
+# 2. Pre-bake the InjecGuard prompt-injection model into HF_HOME (cached
+#    independently of src/ edits) so the first agent query does not pay a
+#    ~45s cold HuggingFace download on Cloud Run.
+RUN /app/.venv/bin/python -c \
+    "from any_guardrail import AnyGuardrail, GuardrailName; AnyGuardrail.create(GuardrailName.INJECGUARD)"
+
+# 3. Copy application code, MCP config, bundled seed skills, and lightweight sample PDFs
 COPY src/ ./src/
 COPY mcp_servers.json ./mcp_servers.json
 COPY skills/ ./skills/

@@ -94,6 +94,14 @@ def test_seek_page_returns_the_requested_window(client: Any, tmp_path: Path) -> 
     assert payload["ok"] is True
     assert payload["page_range"]["start_page"] == 12
     assert payload["page_range"]["end_page"] == 21
+    assert payload["page_range"]["has_previous"] is True
+
+    prev = _call(
+        client, "sqwakvox_presenter_load_more", source=str(pdf), direction="up"
+    )
+    assert prev["ok"] is True
+    assert prev["page_range"]["start_page"] == 2
+    assert prev["page_range"]["end_page"] == 21
 
 
 def test_unknown_tool_is_reported_not_raised(client: Any) -> None:
