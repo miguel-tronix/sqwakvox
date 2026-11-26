@@ -29,10 +29,20 @@ from typing import Any
 from celery.result import AsyncResult
 
 from sqwakvox.backend.celery_app import celery_app
-from sqwakvox.controller import AgentResult, extract_message
-from sqwakvox.models import StructuredDocument
+from sqwakvox.models import AgentResult, StructuredDocument, extract_message
 
 logger = logging.getLogger(__name__)
+
+# Allowlist of Celery tasks accepted by Presenter.submit_task, mapped to their
+# registered task names so views never need to import ``sqwakvox.backend.tasks``
+# (or pull in controller/Docling) in production async mode.
+_TASK_NAMES: dict[str, str] = {
+    "convert_document": "sqwakvox.backend.tasks.convert_document",
+    "domain_postprocess": "sqwakvox.backend.tasks.domain_postprocess",
+    "build_financial_data_store": "sqwakvox.backend.tasks.build_financial_data_store",
+    "cross_validate": "sqwakvox.backend.tasks.cross_validate",
+    "execute_agent": "sqwakvox.backend.tasks.execute_agent",
+}
 
 POLL_INTERVAL = 0.5  # seconds
 # Absolute ceiling on how long the presenter will poll a single task for,
@@ -115,10 +125,8 @@ class Presenter:
         :attr:`TaskStatus.FAILURE` and both ``on_error`` and ``on_complete``
         are invoked with a human-readable message.
         """
-        from sqwakvox.backend import tasks as tasks_mod
-
-        fn = getattr(tasks_mod, task_name, None)
-        if fn is None:
+        full_task_name = _TASK_NAMES.get(task_name)
+        if full_task_name is None:
             raise ValueError(f"Unknown task name: {task_name}")
 
         loop = asyncio.get_event_loop()
@@ -136,18 +144,18 @@ class Presenter:
             # default app (pyamqp on port 5672) -> Connection refused.  The
             # explicit app always carries our Redis broker URL.
             if celery_app.conf.task_always_eager:
+                from sqwakvox.backend import tasks as tasks_mod
+
+                fn = getattr(tasks_mod, task_name)
                 result = fn.apply_async(args=args or [], kwargs=kwargs or {})
             else:
-                # Use the task's registered name (``fn.name``), not the short
-                # lookup key: the worker registers tasks under their full
-                # ``sqwakvox.backend.tasks.*`` names.
                 send_kwargs: dict[str, Any] = {}
                 if queue is not None:
                     send_kwargs["queue"] = queue
                 result = await loop.run_in_executor(
                     None,
                     lambda: celery_app.send_task(
-                        fn.name, args=args or [], kwargs=kwargs or {}, **send_kwargs
+                        full_task_name, args=args or [], kwargs=kwargs or {}, **send_kwargs
                     ),
                 )
         except Exception as exc:
@@ -388,22 +396,32 @@ class Presenter:
         terminal state within this window, the handle is marked as FAILURE
         with a timeout message so the view doesn't hang forever.
         """
-        deadline = asyncio.get_event_loop().time() + (
+        loop = asyncio.get_event_loop()
+        deadline = loop.time() + (
             poll_timeout if poll_timeout is not None else DEFAULT_POLL_TIMEOUT
         )
         started_notified = False
         try:
             while True:
-                if result.ready() or result.state in (
+                if celery_app.conf.task_always_eager:
+                    ready = result.ready()
+                    raw_state = result.state
+                else:
+                    # Offload the Celery result-backend probe so Redis I/O never
+                    # stalls the Textual UI event loop.
+                    ready, raw_state = await loop.run_in_executor(
+                        None, lambda: (result.ready(), result.state)
+                    )
+
+                if ready or raw_state in (
                     "SUCCESS",
                     "FAILURE",
                     "REVOKED",
                 ):
-                    status = self._map_state(result.state)
+                    status = self._map_state(raw_state)
                     handle.status = status
 
                     if status == TaskStatus.SUCCESS:
-                        loop = asyncio.get_event_loop()
                         payload = await loop.run_in_executor(
                             None, lambda: result.get(propagate=False)
                         )
@@ -412,7 +430,6 @@ class Presenter:
                             on_complete(status, payload)
 
                     elif status == TaskStatus.FAILURE:
-                        loop = asyncio.get_event_loop()
                         exc = await loop.run_in_executor(
                             None,
                             lambda: result.result if result.failed() else None,
@@ -439,7 +456,7 @@ class Presenter:
                     break
 
                 # Still running — check the absolute deadline before sleeping.
-                if asyncio.get_event_loop().time() > deadline:
+                if loop.time() > deadline:
                     elapsed = DEFAULT_POLL_TIMEOUT if poll_timeout is None else poll_timeout
                     msg = (
                         f"Timed out waiting for task {handle.task_name} "

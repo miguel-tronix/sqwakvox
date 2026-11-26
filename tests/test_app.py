@@ -654,3 +654,75 @@ async def test_chat_collapse_and_expand(monkeypatch: pytest.MonkeyPatch) -> None
         assert not app.chat_collapsed
         assert app.focused is app.query_one("#chat-input", Input)
 
+
+@pytest.mark.asyncio
+async def test_seek_input_has_visible_content_area_and_renders_typed_page(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: #seek-input must leave visible inner columns after its
+    border and padding so typed page numbers actually display."""
+    app = SqwakvoxApp()
+    async with app.run_test(size=(120, 40)) as pilot:
+        _stub_paged_parse(monkeypatch, app)
+        app._on_parse_success(_paged_doc(), "doc1.pdf")
+        await _flush_workers(pilot)
+
+        seek_input = app.query_one("#seek-input", Input)
+        assert seek_input.content_region.width >= 4
+
+        seek_input.focus()
+        await pilot.press("3", "0")
+        await pilot.pause()
+
+        assert seek_input.value == "30"
+        strips = seek_input.render_lines(seek_input.region.reset_offset)
+        rendered = "".join(strip.text for strip in strips)
+        assert "30" in rendered
+
+
+@pytest.mark.asyncio
+async def test_prefetch_stops_at_one_slice_ahead(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Opening a paged PDF must prefetch only one slice ahead (matching the
+    web presenter), not chain through every remaining slice in the background."""
+    app = SqwakvoxApp()
+    async with app.run_test() as pilot:
+        calls = _stub_paged_parse(monkeypatch, app)
+        app._on_parse_success(_paged_doc(start=1, end=10, total=50), "doc1.pdf")
+        await _flush_workers(pilot)
+
+        assert calls == [(11, 20)]
+
+
+@pytest.mark.asyncio
+async def test_render_pane_virtualized_render_resize_and_clear() -> None:
+    """DocumentRenderPane (ScrollView) renders lines, rewraps when the chat
+    column collapses, and clears cleanly."""
+    from sqwakvox.renderer import DocumentRenderPane
+
+    app = SqwakvoxApp()
+    async with app.run_test(size=(120, 40)) as pilot:
+        pane = app.query_one("#render-pane", DocumentRenderPane)
+        long_line = "Revenue increased steadily across every operating segment " * 5
+        doc = StructuredDocument(file_name="annual.pdf", raw_markdown=long_line)
+
+        pane.update_document(doc, "financial")
+        await pilot.pause()
+
+        assert pane.virtual_size.height > 2
+        rendered = "\n".join(pane.render_line(y).text for y in range(6))
+        assert "annual.pdf" in rendered
+        assert "Revenue increased" in rendered
+
+        height_before = pane.virtual_size.height
+        app._set_chat_collapsed(True)
+        await pilot.pause()
+        # Wider pane wraps the long paragraph into fewer lines.
+        assert pane.virtual_size.height < height_before
+
+        pane.clear_document()
+        await pilot.pause()
+        assert pane.virtual_size.height == 0
+
+

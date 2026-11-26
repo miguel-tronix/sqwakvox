@@ -22,12 +22,12 @@ from typing import Any
 from celery import shared_task
 
 from sqwakvox.backend.celery_app import celery_app  # noqa: F401 — registers tasks
-from sqwakvox.controller import AgentResult, AppController
+from sqwakvox.controller import AppController
 from sqwakvox.domains import get_domain
 from sqwakvox.domains.base import IngestPlan
 from sqwakvox.guardrails import FinancialValue
 from sqwakvox.mcp import McpConnection
-from sqwakvox.models import ModelProvider, StructuredDocument
+from sqwakvox.models import AgentResult, ModelProvider, StructuredDocument
 
 logger = logging.getLogger(__name__)
 
@@ -141,10 +141,9 @@ def build_financial_data_store(
     """
     from typing import cast
 
-    from sqwakvox.domains.financial import _postprocess
-
     doc = StructuredDocument.model_validate(document_dump)
-    payload = _postprocess(doc)
+    domain = get_domain("financial")
+    payload = domain.postprocess(doc, "") if domain.postprocess is not None else {}
     return cast(dict[str, str], payload.get("data_store", {}))
 
 

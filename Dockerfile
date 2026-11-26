@@ -41,18 +41,13 @@ COPY --from=uv_bin /uv /uvx /usr/local/bin/
 WORKDIR /app
 
 # 1. Install dependencies first (cached layer unless pyproject.toml/uv.lock change)
-#    Skip GPU/CUDA packages in uv.lock and install CPU-only torch + torchvision
-#    (~3.5 GB smaller download and image size).
+#    pyproject.toml pins Linux torch/torchvision to the CPU-only PyTorch index,
+#    so uv sync installs CPU-only wheels directly from uv.lock.
 ARG UV_CACHE_DIR=/tmp/uv-cache
 ENV UV_HTTP_TIMEOUT=300 \
     UV_CONCURRENT_DOWNLOADS=4
 COPY pyproject.toml uv.lock README.md ./
-RUN NO_CUDA_ARGS=$(grep -oE '^name = "(nvidia-[^"]+|cuda-[^"]+|triton|torch|torchvision)"' uv.lock \
-        | sed 's/^name = "\(.*\)"/--no-install-package \1/') \
-    && UV_CACHE_DIR="${UV_CACHE_DIR}" uv sync --frozen --no-dev --no-install-project ${NO_CUDA_ARGS} \
-    && UV_CACHE_DIR="${UV_CACHE_DIR}" uv pip install --python /app/.venv/bin/python --no-deps \
-        --index-url https://download.pytorch.org/whl/cpu \
-        torch==2.12.0 torchvision==0.27.0 \
+RUN UV_CACHE_DIR="${UV_CACHE_DIR}" uv sync --frozen --no-dev --no-install-project \
     && rm -rf /tmp/uv-cache
 
 # 2. Pre-bake the InjecGuard prompt-injection model into HF_HOME (cached

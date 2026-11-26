@@ -32,7 +32,12 @@ DOC_PAYLOAD_TTL_SEC = 86400
 
 def get_redis_client() -> redis.Redis:
     """Return a Redis client configured for the session registry."""
-    return redis.Redis.from_url(REDIS_URL, decode_responses=True)
+    return redis.Redis.from_url(
+        REDIS_URL,
+        decode_responses=True,
+        socket_connect_timeout=1.0,
+        socket_timeout=1.0,
+    )
 
 
 def is_redis_available() -> bool:

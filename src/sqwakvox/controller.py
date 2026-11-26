@@ -1,12 +1,9 @@
 from __future__ import annotations
 
 import gc
-import json
 import logging
-import re
 import time
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -15,60 +12,31 @@ from billiard.exceptions import SoftTimeLimitExceeded  # type: ignore[import-unt
 
 from sqwakvox.domains import get_domain
 from sqwakvox.domains.base import GuardrailPipeline, InputGuardrailResult, OutputGuardrailResult
-from sqwakvox.domains.financial import extract_data_store
 from sqwakvox.guardrails import (
     AuditLogger,
     FinancialRuleEngine,
     FinancialValue,
     detect_unit,
+    extract_data_store,
     parse_financial_value,
 )
-from sqwakvox.models import ModelProvider, StructuredDocument, TableData
+from sqwakvox.models import (
+    AgentResult as AgentResult,
+)
+from sqwakvox.models import (
+    ModelProvider,
+    StructuredDocument,
+    TableData,
+)
+from sqwakvox.models import (
+    extract_message as extract_message,
+)
 from sqwakvox.telemetry import get_telemetry, trace_span
 
 if TYPE_CHECKING:
     from docling.document_converter import DocumentConverter
 
 logger = logging.getLogger(__name__)
-
-
-def extract_message(error_string: str) -> str:
-    if not error_string:
-        return error_string
-
-    # Try parsing the entire string as JSON
-    try:
-        obj = json.loads(error_string)
-        msg = _walk_for_message(obj)
-        if msg:
-            return msg
-    except json.JSONDecodeError:
-        pass
-
-    # Try finding a JSON object embedded in the string (e.g. "... {'error': {'message': '...'}}")
-    for m in re.finditer(r"\{.*\}", error_string, re.DOTALL):
-        try:
-            obj = json.loads(m.group())
-            msg = _walk_for_message(obj)
-            if msg:
-                return msg
-        except (json.JSONDecodeError, ValueError):
-            continue
-
-    # Fall back to the last line (often the most human-readable part)
-    lines = [line.strip() for line in error_string.splitlines() if line.strip()]
-    return lines[-1] if lines else error_string
-
-
-def _walk_for_message(obj: object) -> str | None:
-    if isinstance(obj, dict):
-        if "message" in obj and isinstance(obj["message"], str):
-            return obj["message"]
-        for v in obj.values():
-            result = _walk_for_message(v)
-            if result:
-                return result
-    return None
 
 
 def pdf_page_count(source: str) -> int | None:
@@ -157,22 +125,6 @@ def _unwrap_timeout_cause() -> SoftTimeLimitExceeded | None:
             return exc
         exc = exc.__cause__ or exc.__context__
     return None
-
-
-@dataclass
-class AgentResult:
-    response: str = ""
-    is_blocked: bool = False
-    blocked_reason: str = ""
-    pii_redacted_query: bool = False
-    pii_redacted_response: bool = False
-    math_discrepancies: list[str] | None = None
-    success: bool = True
-    error_message: str = ""
-
-    def __post_init__(self) -> None:
-        if self.math_discrepancies is None:
-            self.math_discrepancies = []
 
 
 class AppController:

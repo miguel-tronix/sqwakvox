@@ -41,12 +41,11 @@ from pathlib import Path
 from typing import Any
 
 from sqwakvox import session_registry
-from sqwakvox.controller import AgentResult, extract_message
 from sqwakvox.domains import get_domain, list_domains
 from sqwakvox.domains.base import LoadedDocument
 from sqwakvox.domains.swe import skills as swe_skills
 from sqwakvox.guardrails import AuditLogger
-from sqwakvox.models import ModelProvider, StructuredDocument
+from sqwakvox.models import AgentResult, ModelProvider, StructuredDocument, extract_message
 from sqwakvox.presenter import Presenter, TaskStatus
 from sqwakvox.worker_manager import DOCLING_QUEUE, WorkerManager, managed_workers_enabled
 
