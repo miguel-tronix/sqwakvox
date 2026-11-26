@@ -1,11 +1,67 @@
 from __future__ import annotations
 
+import json
 import os
+import re
 from collections.abc import Mapping
+from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any, ClassVar
 
 from pydantic import BaseModel, Field
+
+
+def extract_message(error_string: str) -> str:
+    """Extract the most human-readable message from an error or JSON payload."""
+    if not error_string:
+        return error_string
+
+    try:
+        obj = json.loads(error_string)
+        msg = _walk_for_message(obj)
+        if msg:
+            return msg
+    except json.JSONDecodeError:
+        pass
+
+    for m in re.finditer(r"\{.*\}", error_string, re.DOTALL):
+        try:
+            obj = json.loads(m.group())
+            msg = _walk_for_message(obj)
+            if msg:
+                return msg
+        except (json.JSONDecodeError, ValueError):
+            continue
+
+    lines = [line.strip() for line in error_string.splitlines() if line.strip()]
+    return lines[-1] if lines else error_string
+
+
+def _walk_for_message(obj: object) -> str | None:
+    if isinstance(obj, dict):
+        if "message" in obj and isinstance(obj["message"], str):
+            return obj["message"]
+        for v in obj.values():
+            result = _walk_for_message(v)
+            if result:
+                return result
+    return None
+
+
+@dataclass
+class AgentResult:
+    response: str = ""
+    is_blocked: bool = False
+    blocked_reason: str = ""
+    pii_redacted_query: bool = False
+    pii_redacted_response: bool = False
+    math_discrepancies: list[str] | None = None
+    success: bool = True
+    error_message: str = ""
+
+    def __post_init__(self) -> None:
+        if self.math_discrepancies is None:
+            self.math_discrepancies = []
 
 
 class TableData(BaseModel):

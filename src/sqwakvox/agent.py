@@ -170,18 +170,13 @@ AGENT_RUN_TIMEOUT_SECONDS = 180.0
 
 
 def _default_templates() -> tuple[Any, Any]:
-    """Financial-domain templates as the fallback for missing domain prompts."""
+    """Default domain templates via the domain registry (financial fallback)."""
     from sqwakvox.domains import get_domain
-    from sqwakvox.domains.financial import (
-        STANDARD_SYSTEM_INSTRUCTIONS_TEMPLATE,
-        UNIFIED_USER_PROMPT_TEMPLATE,
-    )
 
     financial = get_domain("financial")
-    return (
-        financial.system_instructions or STANDARD_SYSTEM_INSTRUCTIONS_TEMPLATE,
-        financial.user_prompt_template or UNIFIED_USER_PROMPT_TEMPLATE,
-    )
+    if financial.system_instructions is None or financial.user_prompt_template is None:
+        raise RuntimeError("Default 'financial' domain is missing prompt templates.")
+    return financial.system_instructions, financial.user_prompt_template
 
 
 _redis_checkpointer: Any | None = None

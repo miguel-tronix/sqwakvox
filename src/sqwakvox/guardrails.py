@@ -8,11 +8,14 @@ import time
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from pydantic import BaseModel
 
 from sqwakvox.telemetry import get_telemetry, trace_span
+
+if TYPE_CHECKING:
+    from sqwakvox.models import StructuredDocument
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +101,29 @@ def parse_financial_value(text: str, default_unit: str = "number") -> FinancialV
         return FinancialValue(val, unit=unit, raw_str=raw_str)
     except ValueError:
         return None
+
+
+def extract_data_store(doc: StructuredDocument) -> dict[str, FinancialValue]:
+    """Parse document tables into a ``{label: FinancialValue}`` store.
+
+    Single source of truth for financial table extraction: both the financial
+    domain's broker-safe post-parse payload and
+    ``AppController.build_financial_data_store`` derive from this helper.
+    """
+    data_store: dict[str, FinancialValue] = {}
+    for table in doc.tables:
+        col_unit = "number"
+        if table.headers and len(table.headers) >= 2:
+            col_unit = detect_unit(table.headers[1])
+
+        for row in table.rows:
+            if len(row) >= 2:
+                label = row[0].strip()
+                for cell in row[1:]:
+                    fv = parse_financial_value(cell, default_unit=col_unit)
+                    if fv is not None and label and len(label) > 1:
+                        data_store[label] = fv
+    return data_store
 
 
 class FinancialRuleEngine:
