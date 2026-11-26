@@ -19,6 +19,7 @@ from sqwakvox.domains.base import (
     OutputGuardrailResult,
     standard_validate_input,
 )
+from sqwakvox.guardrails import extract_data_store as extract_data_store
 from sqwakvox.models import StructuredDocument
 
 STANDARD_SYSTEM_INSTRUCTIONS_TEMPLATE = Template(
@@ -55,29 +56,6 @@ def _guardrails() -> GuardrailPipeline:
     )
 
 
-def extract_data_store(doc: StructuredDocument) -> dict[str, gr.FinancialValue]:
-    """Parse document tables into a ``{label: FinancialValue}`` store.
-
-    Single source of truth for the financial data-store extraction: both the
-    broker-safe string store (:func:`_postprocess`) and the parsed-value
-    store (``AppController.build_financial_data_store``) derive from this.
-    """
-    data_store: dict[str, gr.FinancialValue] = {}
-    for table in doc.tables:
-        col_unit = "number"
-        if table.headers and len(table.headers) >= 2:
-            col_unit = gr.detect_unit(table.headers[1])
-
-        for row in table.rows:
-            if len(row) >= 2:
-                label = row[0].strip()
-                for cell in row[1:]:
-                    fv = gr.parse_financial_value(cell, default_unit=col_unit)
-                    if fv is not None and label and len(label) > 1:
-                        data_store[label] = fv
-    return data_store
-
-
 def _postprocess(doc: StructuredDocument, source: str = "") -> dict[str, object]:
     """Build the financial data store from parsed tables (broker-safe strings)."""
     del source  # hook contract: domain postprocess signature
@@ -107,7 +85,7 @@ def _extract_numeric_column(table: Any) -> list[float]:
 
 def _render(doc: StructuredDocument) -> str:
     """Render a financial document: unicode tables + sparkline trends."""
-    from sqwakvox.renderer import TerminalChartPlotter, UnicodeTableFormatter
+    from sqwakvox.formatting import TerminalChartPlotter, UnicodeTableFormatter
 
     parts: list[str] = [f"[bold]{doc.file_name}[/bold]\n"]
     if doc.raw_markdown:

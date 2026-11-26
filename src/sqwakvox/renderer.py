@@ -12,112 +12,13 @@ from textual.geometry import Size
 from textual.scroll_view import ScrollView
 from textual.strip import Strip
 
-from sqwakvox.models import StructuredDocument, TableData
-
-
-class TerminalChartPlotter:
-    @staticmethod
-    def render_horizontal_bars(labels: list[str], values: list[float], max_width: int = 40) -> str:
-        if not values:
-            return ""
-        max_val = max(values)
-        if max_val == 0:
-            return "\n".join(f"{label:<15} |" for label in labels)
-
-        def _bar(val: float) -> str:
-            bar_len = int((val / max_val) * max_width)
-            return "█" * bar_len + "░" * (max_width - bar_len)
-
-        lines = [
-            f"{label:<15} {_bar(val)} {val:>8.2f}"
-            for label, val in zip(labels, values, strict=True)
-        ]
-        return "\n".join(lines)
-
-    @staticmethod
-    def render_sparkline(values: list[float]) -> str:
-        if not values:
-            return ""
-        blocks = [" ", " ", "▂", "▃", "▄", "▅", "▆", "▇", "█"]
-        min_v, max_v = min(values), max(values)
-        rng = max_v - min_v
-        if rng == 0:
-            return "".join(blocks[4] for _ in values)
-
-        spark = [blocks[int(((val - min_v) / rng) * (len(blocks) - 1))] for val in values]
-        return "".join(spark)
-
-
-class UnicodeTableFormatter:
-    @staticmethod
-    def _detect_alignment(rows: list[list[str]], col_idx: int) -> str:
-        def _is_numeric(row: list[str]) -> bool:
-            cell = row[col_idx].strip()
-            cleaned = cell.replace("$", "").replace(",", "").replace("%", "")
-            try:
-                float(cleaned)
-                return True
-            except ValueError:
-                return False
-
-        numeric_count = sum(1 for row in rows if _is_numeric(row))
-        return "right" if numeric_count > len(rows) // 2 else "left"
-
-    @staticmethod
-    def format_table(table: TableData, header_border: bool = True) -> str:
-        if not table.headers and not table.rows:
-            return ""
-
-        headers = table.headers
-        rows = table.rows
-        num_cols = max(len(headers), max((len(r) for r in rows), default=0))
-        if num_cols == 0:
-            return ""
-
-        padded_headers = [h or "" for h in headers] + [""] * (num_cols - len(headers))
-        padded_rows = [[r[i] if i < len(r) else "" for i in range(num_cols)] for r in rows]
-
-        alignments = [
-            UnicodeTableFormatter._detect_alignment(padded_rows, i) for i in range(num_cols)
-        ]
-
-        col_widths = [
-            max([len(padded_headers[i])] + [len(r[i]) for r in padded_rows]) + 2
-            for i in range(num_cols)
-        ]
-
-        sep_h = "═"
-        sep_v = "║"
-        sep_t = "╤"
-        sep_m = "╪"
-        sep_b = "╧"
-
-        top = "╔" + sep_h.join(sep_h * w for w in col_widths) + "╗"
-        header_sep = "╠" + sep_t.join(sep_h * w for w in col_widths) + "╣" if header_border else ""
-        body_sep = "╟" + sep_m.join("─" * w for w in col_widths) + "╢"
-        bottom = "╚" + sep_b.join(sep_h * w for w in col_widths) + "╝"
-
-        def _format_row(cells: list[str], alignments: list[str]) -> str:
-            parts = [
-                cell.center(w)
-                for cell, w, _align in zip(cells, col_widths, alignments, strict=True)
-            ]
-            return sep_v + sep_v.join(parts) + sep_v
-
-        lines: list[str] = [top]
-
-        if padded_headers[0]:
-            lines.append(_format_row(padded_headers, ["center"] * num_cols))
-            if header_border:
-                lines.append(header_sep)
-
-        for i, row in enumerate(padded_rows):
-            lines.append(_format_row(row, alignments))
-            if i < len(padded_rows) - 1:
-                lines.append(body_sep)
-
-        lines.append(bottom)
-        return "\n".join(lines)
+from sqwakvox.formatting import (
+    TerminalChartPlotter as TerminalChartPlotter,
+)
+from sqwakvox.formatting import (
+    UnicodeTableFormatter as UnicodeTableFormatter,
+)
+from sqwakvox.models import StructuredDocument
 
 
 def _wrap_single_width(line: str, width: int) -> list[str]:

@@ -33,12 +33,11 @@ from textual.widgets import (
 )
 from textual.worker import Worker
 
-from sqwakvox.controller import AgentResult, extract_message
 from sqwakvox.domains import get_domain, list_domains
 from sqwakvox.domains.base import LoadedDocument
 from sqwakvox.domains.swe import skills as swe_skills
 from sqwakvox.guardrails import AuditLogger
-from sqwakvox.models import ModelProvider, StructuredDocument
+from sqwakvox.models import AgentResult, ModelProvider, StructuredDocument, extract_message
 from sqwakvox.presenter import Presenter, TaskStatus
 from sqwakvox.renderer import DocumentRenderPane
 from sqwakvox.telemetry import get_telemetry

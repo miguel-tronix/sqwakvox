@@ -55,6 +55,10 @@ dependencies = [
     # Cheap PDF page count (no OCR) so large PDFs load incrementally by slice.
     "pypdfium2>=4.0.0",
     "pytest-cov>=7.1.0",
+    # Declared directly so [tool.uv.sources] routes Linux installs to the
+    # slim CPU-only PyTorch index instead of PyPI's ~3.5 GB CUDA 13 stack.
+    "torch",
+    "torchvision",
 ]
 
 [dependency-groups]
@@ -75,6 +79,19 @@ sqwakvox-web = "sqwakvox.web_presenter:main"
 sqwakvox-presenter-mcp = "sqwakvox.mcp_presenter:main"
 [tool.uv]
 cache-dir="/home2/app2/uv"
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cpu", marker = "sys_platform == 'linux'" },
+]
+torchvision = [
+    { index = "pytorch-cpu", marker = "sys_platform == 'linux'" },
+]
 [tool.ruff]
 target-version = "py311"
 line-length = 100
