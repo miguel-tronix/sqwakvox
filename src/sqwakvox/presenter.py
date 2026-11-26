@@ -388,22 +388,32 @@ class Presenter:
         terminal state within this window, the handle is marked as FAILURE
         with a timeout message so the view doesn't hang forever.
         """
-        deadline = asyncio.get_event_loop().time() + (
+        loop = asyncio.get_event_loop()
+        deadline = loop.time() + (
             poll_timeout if poll_timeout is not None else DEFAULT_POLL_TIMEOUT
         )
         started_notified = False
         try:
             while True:
-                if result.ready() or result.state in (
+                if celery_app.conf.task_always_eager:
+                    ready = result.ready()
+                    raw_state = result.state
+                else:
+                    # Offload the Celery result-backend probe so Redis I/O never
+                    # stalls the Textual UI event loop.
+                    ready, raw_state = await loop.run_in_executor(
+                        None, lambda: (result.ready(), result.state)
+                    )
+
+                if ready or raw_state in (
                     "SUCCESS",
                     "FAILURE",
                     "REVOKED",
                 ):
-                    status = self._map_state(result.state)
+                    status = self._map_state(raw_state)
                     handle.status = status
 
                     if status == TaskStatus.SUCCESS:
-                        loop = asyncio.get_event_loop()
                         payload = await loop.run_in_executor(
                             None, lambda: result.get(propagate=False)
                         )
@@ -412,7 +422,6 @@ class Presenter:
                             on_complete(status, payload)
 
                     elif status == TaskStatus.FAILURE:
-                        loop = asyncio.get_event_loop()
                         exc = await loop.run_in_executor(
                             None,
                             lambda: result.result if result.failed() else None,
@@ -439,7 +448,7 @@ class Presenter:
                     break
 
                 # Still running — check the absolute deadline before sleeping.
-                if asyncio.get_event_loop().time() > deadline:
+                if loop.time() > deadline:
                     elapsed = DEFAULT_POLL_TIMEOUT if poll_timeout is None else poll_timeout
                     msg = (
                         f"Timed out waiting for task {handle.task_name} "

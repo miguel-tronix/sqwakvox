@@ -151,14 +151,15 @@ Screen {
 }
 
 #seek-input {
-    width: 6;
+    width: 10;
+    padding: 0 1;
+    margin-right: 1;
 }
 
 #page-indicator {
     height: 3;
     width: 1fr;
     content-align: left middle;
-    margin-left: 1;
 }
 
 #view-tabs {
@@ -880,12 +881,12 @@ class SqwakvoxApp(App[None]):
     def action_scroll_up(self) -> None:
         focused = self.focused
         if focused and hasattr(focused, "scroll_up"):
-            focused.scroll_up()
+            focused.scroll_up(animate=False)
 
     def action_scroll_down(self) -> None:
         focused = self.focused
         if focused and hasattr(focused, "scroll_down"):
-            focused.scroll_down()
+            focused.scroll_down(animate=False)
 
     def action_focus_next_pane(self) -> None:
         panes = [
@@ -1286,7 +1287,7 @@ class SqwakvoxApp(App[None]):
         btn_up.label = "Load more ↑" if start > 1 else "At page 1"
         seek_input.disabled = False
         seek_btn.disabled = False
-        seek_input.placeholder = f"Page 1-{total}" if total else "Page"
+        seek_input.placeholder = f"1-{total}" if total else "Page"
 
     async def _prefetch_batch(
         self,
@@ -1294,14 +1295,13 @@ class SqwakvoxApp(App[None]):
         start_page: int,
         *,
         end_page: int | None = None,
-        chain: bool = True,
     ) -> None:
-        """Fetch the PDF slice starting at *start_page* and cache it.
+        """Fetch a single PDF slice starting at *start_page* and cache it.
 
-        ``chain=True`` keeps one slice ahead by prefetching the slice that
-        follows this one (the "Load more ↓" path); ``chain=False`` fetches
-        just this slice (used for the slice above the window so "Load more
-        ↑" is instant).  After a page seek ``paging_generation`` no longer
+        Mirrors :meth:`sqwakvox.doc_session.DocSession._prefetch`: each call
+        fetches only the requested slice instead of chaining through the whole
+        document, keeping CPU and the shared Docling worker idle until the user
+        advances the window.  After a page seek ``paging_generation`` no longer
         matches, and stale slices are discarded instead of repopulating the
         cache.
         """
@@ -1358,22 +1358,6 @@ class SqwakvoxApp(App[None]):
                 return
             loaded.pending[start_page] = handle
             await handle.wait()
-
-            # Keep one slice ahead of the revealed window — but never past
-            # an empty slice (with no page count that would loop forever).
-            cached = loaded.batch_cache.get(start_page)
-            if (
-                chain
-                and generation == loaded.paging_generation
-                and cached is not None
-                and (cached.raw_markdown or "").strip()
-            ):
-                next_start = start_page + batch_size
-                if not loaded.total_pages or next_start <= loaded.total_pages:
-                    self.run_worker(
-                        self._prefetch_batch(source, next_start),
-                        name=f"prefetch_{source}_{next_start}",
-                    )
         except Exception as exc:
             logger.warning(
                 "Prefetch of the slice at page %d for %s failed: %s",
@@ -1407,9 +1391,7 @@ class SqwakvoxApp(App[None]):
         if event is not None:
             await event.wait()
         elif start_page not in loaded.batch_cache:
-            await self._prefetch_batch(
-                source, start_page, end_page=end_page, chain=False
-            )
+            await self._prefetch_batch(source, start_page, end_page=end_page)
         if generation != loaded.paging_generation:
             return None
         return loaded.batch_cache.pop(start_page, None)
@@ -1509,9 +1491,7 @@ class SqwakvoxApp(App[None]):
             prev_start = max(1, prev_end - batch_size + 1)
             if prev_start not in loaded.batch_cache and prev_start not in loaded.pending:
                 self.run_worker(
-                    self._prefetch_batch(
-                        source, prev_start, end_page=prev_end, chain=False
-                    ),
+                    self._prefetch_batch(source, prev_start, end_page=prev_end),
                     name=f"prefetch_{source}_{prev_start}_up",
                 )
 
@@ -1581,6 +1561,7 @@ class SqwakvoxApp(App[None]):
         self.doc_context = get_domain(domain_id).context_for(loaded.structured)
         render_pane = self.query_one("#render-pane", DocumentRenderPane)
         render_pane.update_document(loaded.structured, domain_id)
+        render_pane.scroll_home(animate=False)
         self._update_pager(source)
 
         # Keep one slice ahead below the new window, and one above it.
@@ -1594,7 +1575,7 @@ class SqwakvoxApp(App[None]):
             prev_end = page - 1
             prev_start = max(1, prev_end - window + 1)
             self.run_worker(
-                self._prefetch_batch(source, prev_start, end_page=prev_end, chain=False),
+                self._prefetch_batch(source, prev_start, end_page=prev_end),
                 name=f"prefetch_{source}_{prev_start}_up",
             )
 
@@ -1916,6 +1897,7 @@ class SqwakvoxApp(App[None]):
         # Update center rendering pane with the domain's renderer
         render_pane = self.query_one("#render-pane", DocumentRenderPane)
         render_pane.update_document(doc, domain_id)
+        render_pane.scroll_home(animate=False)
 
         # Reflect this document's page-slice state in the pager controls.
         self._update_pager(doc_source)
@@ -1923,25 +1905,39 @@ class SqwakvoxApp(App[None]):
         # Refresh the skills list for the active domain
         self._refresh_skills_list(domain_id)
 
-        # Publish active document state to Redis session registry for external agents (MCP)
+        # Publish active document state to Redis session registry in a worker
+        # thread so Redis I/O never stalls tab switching on the UI event loop.
+        model_val = "openai:gpt-5.5-high"
         with contextlib.suppress(Exception):
-            from sqwakvox import session_registry
+            val = self.query_one("#model-selector", Select).value
+            if val:
+                model_val = str(val)
+        pub_doc_name = doc.file_name
+        pub_queue = self._active_queue()
+        pub_context = self.doc_context
+        pub_table_count = len(doc.tables)
 
-            model_val = "openai:gpt-5.5-high"
+        def _publish_session() -> None:
             with contextlib.suppress(Exception):
-                val = self.query_one("#model-selector", Select).value
-                if val:
-                    model_val = str(val)
-            session_registry.publish_active_document(
-                doc_name=doc.file_name,
-                source=doc_source,
-                domain_id=domain_id,
-                queue=self._active_queue(),
-                doc_context=self.doc_context,
-                data_store={},
-                table_count=len(doc.tables),
-                model_id=model_val,
-            )
+                from sqwakvox import session_registry
+
+                session_registry.publish_active_document(
+                    doc_name=pub_doc_name,
+                    source=doc_source,
+                    domain_id=domain_id,
+                    queue=pub_queue,
+                    doc_context=pub_context,
+                    data_store={},
+                    table_count=pub_table_count,
+                    model_id=model_val,
+                )
+
+        self.run_worker(
+            _publish_session,
+            name="publish_session_registry",
+            thread=True,
+            exclusive=True,
+        )
 
         # Sync selection across UI elements
         if doc_source:
