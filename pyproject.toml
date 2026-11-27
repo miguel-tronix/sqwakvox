@@ -59,6 +59,7 @@ dependencies = [
     # slim CPU-only PyTorch index instead of PyPI's ~3.5 GB CUDA 13 stack.
     "torch",
     "torchvision",
+    "agent-client-protocol>=1.1.0",
 ]
 
 [dependency-groups]
@@ -77,6 +78,7 @@ packages = ["src/sqwakvox"]
 sqwakvox = "sqwakvox.__main__:main"
 sqwakvox-web = "sqwakvox.web_presenter:main"
 sqwakvox-presenter-mcp = "sqwakvox.mcp_presenter:main"
+sqwakvox-acp = "sqwakvox.acp_presenter:main"
 [tool.uv]
 cache-dir="/home2/app2/uv"
 
