@@ -256,6 +256,31 @@ SQWAKVOX_MCP_ALLOW_HTTP=1 SQWAKVOX_MCP_HTTP_TOKEN=secret \
 
 Available web endpoints: `GET /`, `GET /healthz`, `GET /api/tools`, `POST /api/call`, `GET /api/events` (SSE).
 
+## ACP Presenter
+
+Sqwakvox also exposes an **Agent Client Protocol (ACP)** server over stdio JSON-RPC 2.0 (`sqwakvox-acp`), backed by `DocSession`. Any ACP presenter such as [Orca](https://github.com/orca-build/orca) or Zed can launch and drive Sqwakvox natively.
+
+Start the ACP agent:
+
+```bash
+uv run sqwakvox-acp
+# or pass defaults:
+uv run sqwakvox-acp --domain swe --model openai:gpt-5.5-high
+```
+
+Configure it as a custom ACP agent in Orca or Zed using:
+
+- **Command:** `uv` (or `/path/to/sqwakvox/.venv/bin/sqwakvox-acp`)
+- **Args:** `["run", "--directory", "/path/to/sqwakvox", "sqwakvox-acp"]`
+- **Env:** provider API key (for example `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or `GEMINI_API_KEY`)
+
+Capabilities exposed over ACP:
+
+- **Domain & model pickers**: Session modes and config options map to the registered expert domains (`financial`, `swe`) and LLM models.
+- **File attachments**: Attach local PDF, EPUB, or Markdown files (`@file` / resource blocks) to ingest and activate them automatically with live tool-call progress cards.
+- **Slash commands**: `/open`, `/docs`, `/switch`, `/close`, `/page`, `/more`, `/validate`, `/search`, `/skills`, `/clear`, `/status`, and `/help`.
+- **Live updates & cancellation**: Progress and guardrail notices stream as thought chunks, answers stream as message chunks, and `session/cancel` revokes the active `DocSession` job cleanly.
+
 ### Keybindings
 
 | Key | Action |
