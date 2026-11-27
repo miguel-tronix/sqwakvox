@@ -191,6 +191,7 @@ def test_headless_modules_do_not_import_textual_or_renderer() -> None:
             "sqwakvox.agent",
             "sqwakvox.presenter",
             "sqwakvox.doc_session",
+            "sqwakvox.acp_presenter",
         }
     ]
     for mod in headless:
@@ -219,7 +220,12 @@ def test_generic_core_does_not_import_concrete_domains() -> None:
 def test_presenters_and_views_do_not_import_controller() -> None:
     """Views, sessions, and presenters use models DTOs, not AppController."""
     _, internal, _ = _collect_import_graph()
-    for mod in ("sqwakvox.presenter", "sqwakvox.doc_session", "sqwakvox.app"):
+    for mod in (
+        "sqwakvox.presenter",
+        "sqwakvox.doc_session",
+        "sqwakvox.app",
+        "sqwakvox.acp_presenter",
+    ):
         assert "sqwakvox.controller" not in internal[mod], (
             f"{mod} must import shared DTOs from sqwakvox.models, not sqwakvox.controller"
         )
